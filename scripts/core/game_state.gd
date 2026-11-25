@@ -247,6 +247,7 @@ func _build_map(rng: RandomNumberGenerator) -> void:
 				"recruit": (not final) and col >= 1 and rng.randf() < 0.4,
 				"final": final,
 				"cleared": false,
+				"lost": false,
 			}
 			map_nodes.append(node)
 			ids.append(nid)
@@ -306,7 +307,14 @@ func apply_battle_result(node_id: int, result: Dictionary) -> void:
 			if deploy_ids.size() < MAX_DEPLOY:
 				deploy_ids.append(c["id"])
 	if not bool(result.get("won", false)):
-		# 섬을 못 지켰지만 쉬던 지휘관이 남아 있으면 원정은 계속 (같은 자리에서 다시 고르기)
+		# 섬을 잃음(집이 모두 불탔거나 출전 분대 전멸): 골드·보상 없이 그 섬을 지나 다음으로.
+		# 같은 섬을 다시 시도할 수는 없고, 마지막 섬을 잃으면 원정 실패.
+		var lost_node: Dictionary = map_nodes[node_id]
+		lost_node["lost"] = true
+		current_node = node_id
+		if bool(lost_node["final"]):
+			run_over = true
+			run_won = false
 		changed.emit()
 		return
 	gold += int(result.get("gold", 0))

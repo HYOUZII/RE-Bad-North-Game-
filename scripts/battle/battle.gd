@@ -41,6 +41,7 @@ const MAX_STEP := 1.0 / 30.0      # 한 번에 계산하는 최대 시간(너무
 const ENGAGE_RADIUS := 1.6        # 근접 분대가 적을 발견하는 거리(분대 위치 기준)
 const LEASH_RADIUS := 2.4         # 근접 분대가 적을 쫓아가는 최대 거리
 const HIGH_GROUND_DAMAGE := 0.25  # 높이 1단계 위에서 공격할 때 피해 +25%
+const SELECT_COLOR := Color(0.35, 0.9, 1.0)  # 선택 강조색(하늘색). 창병 노랑과 겹치지 않게
 const HIGH_GROUND_RANGE := 0.6    # 높이 1단계 위에서 활 사거리 +0.6m
 const LOW_GROUND_MELEE := 0.85    # 아래에서 위로 근접 공격하면 피해 x0.85
 const FIRST_WAVE_DELAY := 4.0
@@ -89,6 +90,8 @@ var _auto_t := 0.0
 var _last_action_t := 0.0
 var _action_box: HBoxContainer
 var _skill_btn: Button
+var _toast_label: Label
+var _toast_t := 0.0
 var _item_btn: Button
 
 
@@ -205,9 +208,9 @@ func _spawn_squads() -> void:
 		s.setup(self, c, i, spots[i % spots.size()], Game.soldiers_for(c), Game.hp_mult(c), Game.dmg_mult(c), Game.speed_mult(c))
 		s.label = Label3D.new()
 		s.label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		s.label.font_size = 48
-		s.label.pixel_size = 0.006
-		s.label.outline_size = 12
+		s.label.font_size = 64
+		s.label.pixel_size = 0.009
+		s.label.outline_size = 16
 		s.label.no_depth_test = true
 		s.label.text = str(i + 1)
 		add_child(s.label)
@@ -263,6 +266,7 @@ func _step(dt: float) -> void:
 	for u in units.duplicate():
 		if is_instance_valid(u) and u.state != u.State.DEAD:
 			u.tick(dt)
+	_charge_contacts()
 	_separate()
 	for p in projectiles.duplicate():
 		p.tick(dt)
@@ -295,32 +299,63 @@ func _spawn_wave(boat_list: Array) -> void:
 	_shuffle(options)
 	var used: Array = []
 	var difficulty := int(node_info.get("difficulty", 0))
+	# 섬을 뚫고 지나가지 않고 바다로만 배를 댈 수 있는 곳만 고름
+	var landings: Array = []  # [해안 칸, 바다 칸, 오는 방향]
+	for c in options:
+		var l := _landing_for(c)
+		if not l.is_empty():
+			landings.append(l)
+	if landings.is_empty():
+		return  # 이런 섬은 생성 단계에서 거의 안 나오지만, 혹시 나오면 이번 웨이브는 건너뜀
 	for crew in boat_list:
 		var pick = null
-		for c in options:
+		for l in landings:
 			var far_enough := true
 			for u in used:
-				if Vector2(c - u).length() < 3.0:
+				if Vector2(l[0] - u).length() < 3.0:
 					far_enough = false
 					break
 			if far_enough:
-				pick = c
+				pick = l
 				break
 		if pick == null:
-			pick = options[_rng.randi_range(0, options.size() - 1)]
-		used.append(pick)
-		var sea := _sea_neighbor(pick)
+			pick = landings[_rng.randi_range(0, landings.size() - 1)]
+		used.append(pick[0])
 		var b = Boat.new()
 		add_child(b)
-		b.setup(self, pick, sea, crew, WaveDirector.enemy_hp_mult(difficulty), WaveDirector.enemy_dmg_mult(difficulty), _rng.randf_range(-2.5, 2.5))
+		b.setup(self, pick[0], pick[1], crew, WaveDirector.enemy_hp_mult(difficulty), WaveDirector.enemy_dmg_mult(difficulty), pick[2])
 		boats.append(b)
 
 
-func _sea_neighbor(cell: Vector2i) -> Vector2i:
+## 해안 칸 cell에 배를 댈 수 있으면 [cell, 바다 칸, 바다로 나가는 방향]을, 없으면 []을 돌려줍니다.
+## 방향은 바다 칸에서 멀리까지 곧게 그은 선이 섬의 어떤 칸과도 겹치지 않는 것만 씁니다.
+func _landing_for(cell: Vector2i) -> Array:
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		if not island.tiles.has(cell + d):
-			return cell + d
-	return cell + Vector2i(1, 0)
+		var sea: Vector2i = cell + d
+		if island.tiles.has(sea):
+			continue
+		var base := Vector3(d.x, 0.0, d.y)
+		for deg in [0.0, 25.0, -25.0, 50.0, -50.0, 75.0, -75.0]:
+			var dir := base.rotated(Vector3.UP, deg_to_rad(deg))
+			if _sea_lane_clear(Vector3(sea.x, 0.0, sea.y), dir):
+				return [cell, sea, dir]
+	return []
+
+
+## start에서 dir 방향으로 Boat.SPAWN_DISTANCE만큼 가는 동안 배(폭 약 0.7)가 육지에 닿지 않는가
+func _sea_lane_clear(start: Vector3, dir: Vector3) -> bool:
+	const HALF := 0.5 + 0.4  # 칸 반 크기 + 배 반 폭(여유 포함)
+	var t := 0.0
+	while t <= Boat.SPAWN_DISTANCE + 1.0:
+		var p := start + dir * t
+		var cx := int(round(p.x))
+		var cz := int(round(p.z))
+		for x in range(cx - 1, cx + 2):
+			for z in range(cz - 1, cz + 2):
+				if island.tiles.has(Vector2i(x, z)) and absf(p.x - x) < HALF and absf(p.z - z) < HALF:
+					return false
+		t += 0.25
+	return true
 
 
 func _shuffle(arr: Array) -> void:
@@ -569,6 +604,7 @@ func attack_info(u) -> Dictionary:
 		"steps": height_steps(world_to_cell(u.position)),
 		"mult": u.damage_mult * u.mod("damage"),
 		"knock_mult": u.mod("knock"),
+		"ranged_knock_mult": u.mod("ranged_knock"),
 		"pos": u.position,
 	}
 
@@ -625,7 +661,8 @@ func _apply_damage(info: Dictionary, target, base: float, ranged: bool) -> void:
 	var src: Vector3 = info["pos"]
 	var dir := Vector3(target.position.x - src.x, 0.0, target.position.z - src.z)
 	dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
-	var force: float = float(adef["ranged_knock"] if ranged else adef["knock"]) * float(info.get("knock_mult", 1.0)) \
+	var kmult: float = float(info.get("ranged_knock_mult", 1.0)) if ranged else float(info.get("knock_mult", 1.0))
+	var force: float = float(adef["ranged_knock"] if ranged else adef["knock"]) * kmult \
 			/ (float(target.def["mass"]) * target.mod("mass"))
 	if diff > 0:
 		force *= 1.0 + 0.2 * float(diff)
@@ -665,45 +702,187 @@ func explode(pos: Vector3, team: int, dmg: float, radius: float, knock: float) -
 			kill_unit(u, "explosion")
 
 
+## 지금 기술을 못 쓰는 이유 ("" = 쓸 수 있음). 버튼과 안내 문구에 씁니다.
+func skill_block_reason(s) -> String:
+	if s == null or s.is_wiped() or not s.has_skill():
+		return "기술 없음"
+	if not s.skill_ready():
+		return "%d초" % int(ceil(s.skill_cd))
+	var sk: Dictionary = Catalog.SKILLS[s.type_id()]
+	if bool(sk.get("volley", false)) and _volley_targets(s).is_empty():
+		return "사거리 안에 적 없음"
+	return ""
+
+
+## 일제 사격: 궁수마다 사거리 안에서 가장 가까운 적 [[궁수, 적], ...]
+func _volley_targets(s) -> Array:
+	var out: Array = []
+	for u in s.units:
+		if u.state != u.State.ACTIVE:
+			continue
+		var best = null
+		var best_d := INF
+		for e in units:
+			if e.team != 1 or not e.is_targetable():
+				continue
+			var d := _flat_dist(u.position, e.position)
+			if d < best_d and d <= effective_range_with(u, e, Catalog.SKILLS["archer"]["buff"]):
+				best_d = d
+				best = e
+		if best != null:
+			out.append([u, best])
+	return out
+
+
+## 기술 버프가 켜졌다고 치고 계산한 사거리 (기술 쓰기 전 판단용)
+func effective_range_with(shooter, target, b: Dictionary) -> float:
+	var diff := height_steps(world_to_cell(shooter.position)) - _steps_of(target)
+	return float(shooter.def["range"]) * float(b.get("range", 1.0)) + HIGH_GROUND_RANGE * float(max(0, diff))
+
+
 func use_skill(s) -> bool:
-	if s == null or s.is_wiped() or not s.skill_ready():
+	var why := skill_block_reason(s)
+	if why != "":
+		if s != null and not auto_play:
+			_toast("기술을 쓸 수 없음: " + why)
 		return false
 	var sk: Dictionary = Catalog.SKILLS[s.type_id()]
 	s.skill_cd = float(sk["cooldown"])
 	for u in s.units:
 		u.apply_buff(sk["buff"], float(sk["duration"]))
+	# 돌진: 가장 가까운 적 쪽으로 분대를 곧장 보냄
+	if sk.has("rush"):
+		var c: Vector3 = s.centroid()
+		var best = null
+		var best_d := float(sk["rush"])
+		for e in units:
+			if e.team == 1 and e.state == e.State.ACTIVE:
+				var d := _flat_dist(c, e.position)
+				if d < best_d:
+					best_d = d
+					best = e
+		if best != null:
+			try_order(s, world_to_cell(best.position))
+	# 창벽: 쓰는 순간 주변 적을 한꺼번에 밀쳐 냄
+	if sk.has("sweep"):
+		var sw: Dictionary = sk["sweep"]
+		var done := {}
+		for u in s.units:
+			for e in units.duplicate():
+				if e.team != 1 or e.state != e.State.ACTIVE or done.has(e):
+					continue
+				if _flat_dist(u.position, e.position) <= float(sw["radius"]) and can_melee(u.position, e.position):
+					done[e] = true
+					_skill_hit(u, e, float(sw["damage"]), _push_dir(u, e, false) * float(sw["knock"]))
+	# 일제 사격: 장전 대기 없이 바로 쏨 (행군 중이어도 쏨)
+	if bool(sk.get("volley", false)):
+		for pair in _volley_targets(s):
+			fire_arrow(pair[0], pair[1])
+			pair[0]._ranged_cd = float(pair[0].def["ranged_cooldown"]) * float(sk["buff"]["ranged_cd"])
 	skill_used.emit(s, s.type_id())
 	return true
 
 
+## 기술로 적을 칠 때: 넉백은 적 무게로 나눠서 적용 (무거운 적은 덜 밀림)
+func _skill_hit(attacker, target, dmg: float, push: Vector3) -> void:
+	if not target.is_targetable() or target.state != target.State.ACTIVE:
+		return
+	var kb: Vector3 = push / (float(target.def["mass"]) * target.mod("mass"))
+	target.take_hit(dmg, kb)
+	_last_action_t = elapsed
+	unit_hit.emit(target, attacker, dmg, kb, false)
+	skill_hits += 1
+	if target.hp <= 0.0:
+		kill_unit(target, "melee")
+
+
+## a가 b를 미는 방향. 달리는 중이면 달리는 방향을 더 따름(돌격)
+func _push_dir(a, b, follow_motion: bool) -> Vector3:
+	var away := Vector3(b.position.x - a.position.x, 0.0, b.position.z - a.position.z)
+	away = away.normalized() if away.length() > 0.001 else Vector3.FORWARD
+	if follow_motion:
+		var mv: Vector3 = a.velocity
+		mv.y = 0.0
+		if mv.length() > 0.3:
+			return (away * 0.6 + mv.normalized()).normalized()
+	return away
+
+
+## 방패 돌격 중인 병사가 몸에 닿은 적을 들이받음 (매 단계 호출)
+var _charge_next := {}  # "병사id:적id" -> 다시 칠 수 있는 시각
+var skill_hits := 0     # 기술로 친 횟수 (테스트 통계용)
+
+func _charge_contacts() -> void:
+	for u in units:
+		if u.team != 0 or u.state != u.State.ACTIVE or u.buff_t <= 0.0 or u.squad == null:
+			continue
+		var sk: Dictionary = Catalog.SKILLS.get(u.squad.type_id(), {})
+		if not sk.has("charge"):
+			continue
+		var ch: Dictionary = sk["charge"]
+		for e in units.duplicate():
+			if e.team != 1 or e.state != e.State.ACTIVE:
+				continue
+			if _flat_dist(u.position, e.position) > u.radius() + e.radius() + float(ch["reach"]):
+				continue
+			if not can_melee(u.position, e.position):
+				continue
+			var key := "%d:%d" % [u.get_instance_id(), e.get_instance_id()]
+			if elapsed < float(_charge_next.get(key, -1.0)):
+				continue
+			_charge_next[key] = elapsed + float(ch["again"])
+			_skill_hit(u, e, float(ch["damage"]), _push_dir(u, e, true) * float(ch["knock"]))
+
+
+## 지금 장비를 못 쓰는 이유 ("" = 쓸 수 있음)
+func item_block_reason(s) -> String:
+	if s == null or s.is_wiped():
+		return "분대 없음"
+	var item := str(s.commander.get("item", ""))
+	if not Catalog.item_active(item):
+		return "쓰는 장비 없음"
+	if s.item_used:
+		return "이번 전투에 이미 사용함"
+	match item:
+		"bomb":
+			if _bomb_target(s) == null:
+				return "근처(%dm)에 적 없음" % int(Catalog.BOMB_REACH)
+		"horn":
+			if s.units.size() >= s.max_soldiers:
+				return "병사가 모두 살아 있음"
+	return ""
+
+
+## 화약 단지: 분대 근처에서 적이 가장 많이 모인 곳의 적
+func _bomb_target(s):
+	var c: Vector3 = s.centroid()
+	var target = null
+	var best := -1
+	for e in units:
+		if e.team != 1 or e.state != e.State.ACTIVE or _flat_dist(c, e.position) > Catalog.BOMB_REACH:
+			continue
+		var crowd := 0
+		for o in units:
+			if o.team == 1 and o.state == o.State.ACTIVE and _flat_dist(o.position, e.position) <= Catalog.BOMB_RADIUS:
+				crowd += 1
+		if crowd > best:
+			best = crowd
+			target = e
+	return target
+
+
 func use_item(s) -> bool:
-	if s == null or s.is_wiped() or not s.item_ready():
+	var why := item_block_reason(s)
+	if why != "":
+		if s != null and not auto_play:
+			_toast("장비를 쓸 수 없음: " + why)
 		return false
 	var item := str(s.commander.get("item", ""))
 	match item:
 		"bomb":
-			var c: Vector3 = s.centroid()
-			var target = null
-			var best := -1
-			for e in units:
-				if e.team != 1 or e.state != e.State.ACTIVE or _flat_dist(c, e.position) > Catalog.BOMB_REACH:
-					continue
-				var crowd := 0
-				for o in units:
-					if o.team == 1 and o.state == o.State.ACTIVE and _flat_dist(o.position, e.position) <= Catalog.BOMB_RADIUS:
-						crowd += 1
-				if crowd > best:
-					best = crowd
-					target = e
-			if target == null:
-				return false  # 근처에 적이 없으면 아끼기
-			explode(target.position, 0, Catalog.BOMB_DAMAGE, Catalog.BOMB_RADIUS, Catalog.BOMB_KNOCK)
+			explode(_bomb_target(s).position, 0, Catalog.BOMB_DAMAGE, Catalog.BOMB_RADIUS, Catalog.BOMB_KNOCK)
 		"horn":
-			if s.units.size() >= s.max_soldiers:
-				return false  # 다 살아 있으면 아끼기
 			s.refill()
-		_:
-			return false
 	s.item_used = true
 	item_used.emit(s, item)
 	return true
@@ -735,6 +914,14 @@ func kill_unit(u, cause: String) -> void:
 
 # ================================================================ 승패
 
+func intact_house_count() -> int:
+	var n := 0
+	for h in houses:
+		if h.intact:
+			n += 1
+	return n
+
+
 func _check_end() -> void:
 	if finished:
 		return
@@ -743,8 +930,8 @@ func _check_end() -> void:
 		for u in units.duplicate():
 			if u.team == 1:
 				kill_unit(u, "retreat")
-	if player_count() == 0:
-		_finish(false)
+	if player_count() == 0 or intact_house_count() == 0:
+		_finish(false)  # 병사가 모두 죽거나, 지킬 집이 하나도 안 남으면 패배
 	elif wave_index >= waves.size() - 1 and enemy_count() == 0:
 		_finish(true)
 
@@ -788,7 +975,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			var sq = _pick_squad(mb.position)
+			# 분대를 고른 뒤에는 다른 분대의 숫자 라벨을 눌러야만 바뀜 (옆 칸 클릭이 분대 선택으로 새지 않게)
+			var sq = _pick_squad(mb.position) if selected == null else _pick_squad_label(mb.position)
 			if sq != null and sq != selected:
 				_select(sq)
 			elif selected != null:
@@ -857,6 +1045,22 @@ func _pick_squad(screen_pos: Vector2):
 	return best
 
 
+func _pick_squad_label(screen_pos: Vector2):
+	var cam: Camera3D = camera_rig.camera
+	var best = null
+	var best_d := 22.0
+	for s in squads:
+		if s == selected or s.label == null or not s.label.visible:
+			continue
+		if cam.is_position_behind(s.label.global_position):
+			continue
+		var d := cam.unproject_position(s.label.global_position).distance_to(screen_pos)
+		if d < best_d:
+			best_d = d
+			best = s
+	return best
+
+
 # ================================================================ 화면 표시
 
 func _process(_delta: float) -> void:
@@ -865,16 +1069,20 @@ func _process(_delta: float) -> void:
 			continue
 		s.label.visible = not s.is_wiped()
 		if s.label.visible:
-			s.label.position = s.centroid() + Vector3(0, 0.9, 0)
-			s.label.modulate = Color(1, 0.9, 0.2) if s == selected else Color(1, 1, 1)
+			s.label.position = s.centroid() + Vector3(0, 1.15, 0)  # 집 골드 라벨보다 위
+			s.label.modulate = SELECT_COLOR if s == selected else Color(1, 1, 1)
 	if selected != null and not selected.is_wiped():
 		_sel_marker.visible = true
 		_sel_marker.position = cell_center(selected.anchor_cell) + Vector3(0, 0.01, 0)
+		if house_at(selected.anchor_cell) != null:
+			_sel_marker.position.y += 0.75  # 집에 가려지지 않게 지붕 위에 띄움
 		var hover_ok := _hover_cell != NO_CELL and not order_path(selected, _hover_cell).is_empty()
 		_hover_marker.visible = _hover_cell != NO_CELL and hover_ok
 		_hover_bad.visible = _hover_cell != NO_CELL and not hover_ok
 		if _hover_cell != NO_CELL:
 			_hover_marker.position = cell_center(_hover_cell) + Vector3(0, 0.02, 0)
+			if island.blocked.has(_hover_cell) or house_at(_hover_cell) != null:
+				_hover_marker.position.y += 0.7  # 바위·집에 가려지지 않게 위로 띄움
 			_hover_bad.position = _hover_marker.position
 	else:
 		_sel_marker.visible = false
@@ -884,7 +1092,7 @@ func _process(_delta: float) -> void:
 	_update_hud()
 
 
-## 이동 경로 점선: 행군 중인 분대는 흰 점, 선택 중 미리보기는 노란 점.
+## 이동 경로 점선: 행군 중인 분대는 흰 점, 선택 중 미리보기는 하늘색 점.
 ## 경로가 바뀔 때만 점을 다시 만듭니다.
 func _refresh_paths() -> void:
 	var lines: Array = []  # [[칸 목록, 미리보기 여부, 시작 위치]]
@@ -988,35 +1196,52 @@ func _setup_hud() -> void:
 	_hud_help = _make_label(15)
 	_hud_help.anchor_left = 1.0
 	_hud_help.anchor_right = 1.0
-	_hud_help.offset_left = -470
+	_hud_help.offset_left = -600
 	_hud_help.offset_right = -16
 	_hud_help.offset_top = 12
 	_hud_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n분대를 집 칸에 세우면 병사가 회복됩니다"
+	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동\n다른 분대로 바꾸기: 그 분대 숫자 클릭\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n분대를 집 칸에 세우면 병사가 회복됩니다"
 	layer.add_child(_hud_help)
+
+	# 잠깐 떴다 사라지는 안내 문구 (예: "장비를 쓸 수 없음: 근처에 적 없음")
+	_toast_label = _make_label(20)
+	_toast_label.anchor_left = 1.0
+	_toast_label.anchor_right = 1.0
+	_toast_label.anchor_top = 1.0
+	_toast_label.anchor_bottom = 1.0
+	_toast_label.offset_left = -640
+	_toast_label.offset_right = -16
+	_toast_label.offset_top = -110
+	_toast_label.offset_bottom = -76
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_toast_label.modulate = Color(1.0, 0.75, 0.6)
+	_toast_label.visible = false
+	layer.add_child(_toast_label)
 
 	# 선택한 분대의 기술/장비 버튼 (화면 아래 가운데)
 	_action_box = HBoxContainer.new()
-	_action_box.anchor_left = 0.5
-	_action_box.anchor_right = 0.5
+	_action_box.anchor_left = 1.0
+	_action_box.anchor_right = 1.0
 	_action_box.anchor_top = 1.0
 	_action_box.anchor_bottom = 1.0
-	_action_box.offset_left = -260
-	_action_box.offset_right = 260
+	_action_box.offset_left = -640
+	_action_box.offset_right = -16
 	_action_box.offset_top = -70
 	_action_box.offset_bottom = -16
-	_action_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_action_box.alignment = BoxContainer.ALIGNMENT_END  # 오른쪽 아래 (왼쪽 아래 분대 목록과 안 겹치게)
 	_action_box.add_theme_constant_override("separation", 12)
 	_action_box.visible = false
 	layer.add_child(_action_box)
 	_skill_btn = Button.new()
 	_skill_btn.add_theme_font_size_override("font_size", 18)
 	_skill_btn.focus_mode = Control.FOCUS_NONE
+	_skill_btn.add_theme_color_override("font_disabled_color", Color(0.8, 0.8, 0.8))  # 못 쓸 때도 이유가 읽히게
 	_skill_btn.pressed.connect(func(): use_skill(selected))
 	_action_box.add_child(_skill_btn)
 	_item_btn = Button.new()
 	_item_btn.add_theme_font_size_override("font_size", 18)
 	_item_btn.focus_mode = Control.FOCUS_NONE
+	_item_btn.add_theme_color_override("font_disabled_color", Color(0.8, 0.8, 0.8))  # 못 쓸 때도 이유가 읽히게
 	_item_btn.pressed.connect(func(): use_item(selected))
 	_action_box.add_child(_item_btn)
 
@@ -1045,9 +1270,21 @@ func _setup_hud() -> void:
 	layer.add_child(_result_panel)
 
 
+func _toast(text: String) -> void:
+	if _toast_label == null:
+		return
+	_toast_label.text = text
+	_toast_label.visible = true
+	_toast_t = 2.0
+
+
 func _update_hud() -> void:
 	if _hud_top == null:
 		return
+	if _toast_t > 0.0:
+		_toast_t -= get_process_delta_time()
+		if _toast_t <= 0.0:
+			_toast_label.visible = false
 	var intact := 0
 	for h in houses:
 		if h.intact:
@@ -1095,15 +1332,17 @@ func _update_action_buttons() -> void:
 	if selected.has_skill():
 		_skill_btn.visible = true
 		var nm := Catalog.skill_name(selected.type_id())
-		_skill_btn.text = "[F] %s" % nm if selected.skill_ready() else "[F] %s (%d초)" % [nm, int(ceil(selected.skill_cd))]
-		_skill_btn.disabled = not selected.skill_ready()
+		var why := skill_block_reason(selected)
+		_skill_btn.text = "[F] %s" % nm if why == "" else "[F] %s (%s)" % [nm, why]
+		_skill_btn.disabled = why != ""
 	else:
 		_skill_btn.visible = false
 	var item := str(selected.commander.get("item", ""))
 	if Catalog.item_active(item):
 		_item_btn.visible = true
-		_item_btn.text = "[G] %s%s" % [Catalog.item_name(item), " (사용함)" if selected.item_used else ""]
-		_item_btn.disabled = not selected.item_ready()
+		var why_i := item_block_reason(selected)
+		_item_btn.text = "[G] %s" % Catalog.item_name(item) if why_i == "" else "[G] %s (%s)" % [Catalog.item_name(item), why_i]
+		_item_btn.disabled = why_i != ""
 	else:
 		_item_btn.visible = false
 
@@ -1114,7 +1353,10 @@ func _show_result() -> void:
 	if r["won"]:
 		text = "섬을 지켰습니다!\n\n지킨 집 %d/%d   골드 +%d" % [r["houses_saved"], r["houses_total"], r["gold"]]
 	else:
-		text = "출전한 분대가 모두 쓰러졌습니다.\n섬을 지키지 못했습니다."
+		if intact_house_count() == 0:
+			text = "집이 모두 불탔습니다.\n섬을 잃었습니다. (보상 없음)"
+		else:
+			text = "출전한 분대가 모두 쓰러졌습니다.\n섬을 잃었습니다. (보상 없음)"
 	if not (r["wiped"] as Array).is_empty() and r["won"]:
 		text += "\n\n전멸한 분대 %d개는 영영 돌아오지 않습니다." % (r["wiped"] as Array).size()
 	_result_label.text = text

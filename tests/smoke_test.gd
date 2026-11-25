@@ -55,6 +55,7 @@ func _run(seed_value: int) -> bool:
 		b.item_used.connect(func(_s, k): _count("item_" + k))
 		b.unit_died.connect(func(u, cause): _count("died_%s_%s" % ["player" if u.team == 0 else "enemy", cause]))
 		b.house_burned.connect(func(_h): _count("house_burned"))
+		b.unit_fell.connect(func(u): _count("fell_sea_%s" % ("player" if u.team == 0 else "enemy")))
 		b.squad_reinforced.connect(func(_s): _count("reinforced"))
 		add_child(b)
 		var timer := get_tree().create_timer(150.0)
@@ -68,6 +69,9 @@ func _run(seed_value: int) -> bool:
 		timer.timeout.connect(on_timeout)
 		var result: Dictionary = await b.battle_ended
 		timer.timeout.disconnect(on_timeout)
+		stats["skill_hits"] = int(stats.get("skill_hits", 0)) + b.skill_hits
+		if not result["won"]:
+			_count("lost_by_houses" if b.intact_house_count() == 0 else "lost_by_wipe")
 		var node: Dictionary = Game.map_nodes[nid]
 		print("seed=%d island=%s diff=%d won=%s houses=%d/%d gold=%d wiped=%s time=%.0fs roster=%s" % [
 			seed_value, node["name"], node["difficulty"], result["won"], result["houses_saved"],
