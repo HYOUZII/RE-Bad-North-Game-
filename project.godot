@@ -1,0 +1,26 @@
+; Engine configuration file.
+; Godot 4 프로젝트 설정 파일입니다. 에디터에서 열면 자동으로 정리됩니다.
+
+config_version=5
+
+[application]
+
+config/name="Isle Defense"
+config/description="섬 방어 실시간 전술 로그라이크 (오리지널 프로젝트)"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Assets="*res://scripts/core/asset_library.gd"
+AI="*res://scripts/ai/ai_service.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
