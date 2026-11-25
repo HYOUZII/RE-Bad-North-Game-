@@ -1,6 +1,7 @@
 extends Node3D
 ## 침략자의 배: 바다 멀리서 해안으로 다가와 병사를 내려놓고 돌아갑니다.
 ## 배에 탄 적은 아군 궁수의 화살에 맞을 수 있습니다(상륙 전에 줄이기).
+## 배는 바다로만 다닙니다. 오는 길(approach_dir)은 battle.gd가 섬과 겹치지 않는 방향으로 골라 줍니다.
 
 enum Phase { SAILING, UNLOADING, LEAVING }
 
@@ -18,16 +19,14 @@ var _unload_t := 0.6
 var _leave_t := 0.0
 
 
-func setup(p_battle, p_shore: Vector2i, sea_cell: Vector2i, types: Array, hp_mult: float, dmg_mult: float, lateral: float) -> void:
+## approach_dir: 배를 대는 곳(land)에서 바다 쪽으로 나가는 방향. 이 직선 위에는 섬이 없음.
+func setup(p_battle, p_shore: Vector2i, sea_cell: Vector2i, types: Array, hp_mult: float, dmg_mult: float, approach_dir: Vector3) -> void:
 	battle = p_battle
 	shore_cell = p_shore
 	add_child(Assets.get_model("boat"))
-	var sea_c := Vector3(sea_cell.x, 0.0, sea_cell.y)
-	var shore_c := Vector3(p_shore.x, 0.0, p_shore.y)
-	out_dir = (sea_c - shore_c).normalized()
-	land_pos = sea_c - out_dir * 0.1
-	var side := Vector3(out_dir.z, 0.0, -out_dir.x)
-	position = land_pos + out_dir * SPAWN_DISTANCE + side * lateral
+	land_pos = Vector3(sea_cell.x, 0.0, sea_cell.y)
+	out_dir = approach_dir.normalized()
+	position = land_pos + out_dir * SPAWN_DISTANCE
 	_face(land_pos - position)
 	for t in types:
 		var u = battle.spawn_unit(str(t), 1, position, hp_mult, dmg_mult)

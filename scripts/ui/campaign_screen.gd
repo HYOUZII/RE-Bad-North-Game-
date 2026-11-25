@@ -134,7 +134,7 @@ func _refresh() -> void:
 		var tags := ""
 		if bool(node["recruit"]):
 			tags += " +지휘관"
-		var mark := "✔ " if bool(node["cleared"]) else ""
+		var mark := "✔ " if bool(node["cleared"]) else ("✖ " if bool(node.get("lost", false)) else "")
 		b.text = "%s%s\n위험 %d%s" % [mark, str(node["name"]), int(node["difficulty"]), tags]
 		b.disabled = not (id in reach)
 		if id == Game.current_node:
@@ -146,7 +146,7 @@ func _refresh() -> void:
 		else:
 			b.modulate = Color(0.9, 0.9, 0.95)
 	_gold_label.text = "골드: %d" % Game.gold
-	_info_label.text = "섬 %d개 방어 완료.   출전 %d/%d명\n지킨 집마다 골드를 받습니다. 분대가 전멸하면 지휘관은 영영 돌아오지 않습니다.\n'+지휘관' 섬을 지키면 새 지휘관(민병)이 합류합니다." % [Game.islands_cleared, Game.deployed_commanders().size(), Game.MAX_DEPLOY]
+	_info_label.text = "섬 %d개 방어 완료.   출전 %d/%d명\n지킨 집마다 골드를 받습니다. 분대가 전멸하면 지휘관은 영영 돌아오지 않습니다. 집이 모두 불타면 그 섬을 잃습니다(보상 없음, ✖).\n'+지휘관' 섬을 지키면 새 지휘관(민병)이 합류합니다." % [Game.islands_cleared, Game.deployed_commanders().size(), Game.MAX_DEPLOY]
 
 	for c in _roster_box.get_children():
 		c.queue_free()

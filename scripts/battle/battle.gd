@@ -263,6 +263,7 @@ func _step(dt: float) -> void:
 	for u in units.duplicate():
 		if is_instance_valid(u) and u.state != u.State.DEAD:
 			u.tick(dt)
+	_charge_contacts()
 	_separate()
 	for p in projectiles.duplicate():
 		p.tick(dt)
@@ -295,32 +296,63 @@ func _spawn_wave(boat_list: Array) -> void:
 	_shuffle(options)
 	var used: Array = []
 	var difficulty := int(node_info.get("difficulty", 0))
+	# 섬을 뚫고 지나가지 않고 바다로만 배를 댈 수 있는 곳만 고름
+	var landings: Array = []  # [해안 칸, 바다 칸, 오는 방향]
+	for c in options:
+		var l := _landing_for(c)
+		if not l.is_empty():
+			landings.append(l)
+	if landings.is_empty():
+		return  # 이런 섬은 생성 단계에서 거의 안 나오지만, 혹시 나오면 이번 웨이브는 건너뜀
 	for crew in boat_list:
 		var pick = null
-		for c in options:
+		for l in landings:
 			var far_enough := true
 			for u in used:
-				if Vector2(c - u).length() < 3.0:
+				if Vector2(l[0] - u).length() < 3.0:
 					far_enough = false
 					break
 			if far_enough:
-				pick = c
+				pick = l
 				break
 		if pick == null:
-			pick = options[_rng.randi_range(0, options.size() - 1)]
-		used.append(pick)
-		var sea := _sea_neighbor(pick)
+			pick = landings[_rng.randi_range(0, landings.size() - 1)]
+		used.append(pick[0])
 		var b = Boat.new()
 		add_child(b)
-		b.setup(self, pick, sea, crew, WaveDirector.enemy_hp_mult(difficulty), WaveDirector.enemy_dmg_mult(difficulty), _rng.randf_range(-2.5, 2.5))
+		b.setup(self, pick[0], pick[1], crew, WaveDirector.enemy_hp_mult(difficulty), WaveDirector.enemy_dmg_mult(difficulty), pick[2])
 		boats.append(b)
 
 
-func _sea_neighbor(cell: Vector2i) -> Vector2i:
+## 해안 칸 cell에 배를 댈 수 있으면 [cell, 바다 칸, 바다로 나가는 방향]을, 없으면 []을 돌려줍니다.
+## 방향은 바다 칸에서 멀리까지 곧게 그은 선이 섬의 어떤 칸과도 겹치지 않는 것만 씁니다.
+func _landing_for(cell: Vector2i) -> Array:
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		if not island.tiles.has(cell + d):
-			return cell + d
-	return cell + Vector2i(1, 0)
+		var sea: Vector2i = cell + d
+		if island.tiles.has(sea):
+			continue
+		var base := Vector3(d.x, 0.0, d.y)
+		for deg in [0.0, 25.0, -25.0, 50.0, -50.0, 75.0, -75.0]:
+			var dir := base.rotated(Vector3.UP, deg_to_rad(deg))
+			if _sea_lane_clear(Vector3(sea.x, 0.0, sea.y), dir):
+				return [cell, sea, dir]
+	return []
+
+
+## start에서 dir 방향으로 Boat.SPAWN_DISTANCE만큼 가는 동안 배(폭 약 0.7)가 육지에 닿지 않는가
+func _sea_lane_clear(start: Vector3, dir: Vector3) -> bool:
+	const HALF := 0.5 + 0.4  # 칸 반 크기 + 배 반 폭(여유 포함)
+	var t := 0.0
+	while t <= Boat.SPAWN_DISTANCE + 1.0:
+		var p := start + dir * t
+		var cx := int(round(p.x))
+		var cz := int(round(p.z))
+		for x in range(cx - 1, cx + 2):
+			for z in range(cz - 1, cz + 2):
+				if island.tiles.has(Vector2i(x, z)) and absf(p.x - x) < HALF and absf(p.z - z) < HALF:
+					return false
+		t += 0.25
+	return true
 
 
 func _shuffle(arr: Array) -> void:
@@ -569,6 +601,7 @@ func attack_info(u) -> Dictionary:
 		"steps": height_steps(world_to_cell(u.position)),
 		"mult": u.damage_mult * u.mod("damage"),
 		"knock_mult": u.mod("knock"),
+		"ranged_knock_mult": u.mod("ranged_knock"),
 		"pos": u.position,
 	}
 
@@ -625,7 +658,8 @@ func _apply_damage(info: Dictionary, target, base: float, ranged: bool) -> void:
 	var src: Vector3 = info["pos"]
 	var dir := Vector3(target.position.x - src.x, 0.0, target.position.z - src.z)
 	dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
-	var force: float = float(adef["ranged_knock"] if ranged else adef["knock"]) * float(info.get("knock_mult", 1.0)) \
+	var kmult: float = float(info.get("ranged_knock_mult", 1.0)) if ranged else float(info.get("knock_mult", 1.0))
+	var force: float = float(adef["ranged_knock"] if ranged else adef["knock"]) * kmult \
 			/ (float(target.def["mass"]) * target.mod("mass"))
 	if diff > 0:
 		force *= 1.0 + 0.2 * float(diff)
@@ -672,8 +706,87 @@ func use_skill(s) -> bool:
 	s.skill_cd = float(sk["cooldown"])
 	for u in s.units:
 		u.apply_buff(sk["buff"], float(sk["duration"]))
+	# 돌진: 가장 가까운 적 쪽으로 분대를 곧장 보냄
+	if sk.has("rush"):
+		var c: Vector3 = s.centroid()
+		var best = null
+		var best_d := float(sk["rush"])
+		for e in units:
+			if e.team == 1 and e.state == e.State.ACTIVE:
+				var d := _flat_dist(c, e.position)
+				if d < best_d:
+					best_d = d
+					best = e
+		if best != null:
+			try_order(s, world_to_cell(best.position))
+	# 창벽: 쓰는 순간 주변 적을 한꺼번에 밀쳐 냄
+	if sk.has("sweep"):
+		var sw: Dictionary = sk["sweep"]
+		var done := {}
+		for u in s.units:
+			for e in units.duplicate():
+				if e.team != 1 or e.state != e.State.ACTIVE or done.has(e):
+					continue
+				if _flat_dist(u.position, e.position) <= float(sw["radius"]) and can_melee(u.position, e.position):
+					done[e] = true
+					_skill_hit(u, e, float(sw["damage"]), _push_dir(u, e, false) * float(sw["knock"]))
+	# 일제 사격: 장전 대기 없이 바로 쏨
+	if bool(sk.get("volley", false)):
+		for u in s.units:
+			u._ranged_cd = 0.0
 	skill_used.emit(s, s.type_id())
 	return true
+
+
+## 기술로 적을 칠 때: 넉백은 적 무게로 나눠서 적용 (무거운 적은 덜 밀림)
+func _skill_hit(attacker, target, dmg: float, push: Vector3) -> void:
+	if not target.is_targetable() or target.state != target.State.ACTIVE:
+		return
+	var kb: Vector3 = push / (float(target.def["mass"]) * target.mod("mass"))
+	target.take_hit(dmg, kb)
+	_last_action_t = elapsed
+	unit_hit.emit(target, attacker, dmg, kb, false)
+	skill_hits += 1
+	if target.hp <= 0.0:
+		kill_unit(target, "melee")
+
+
+## a가 b를 미는 방향. 달리는 중이면 달리는 방향을 더 따름(돌격)
+func _push_dir(a, b, follow_motion: bool) -> Vector3:
+	var away := Vector3(b.position.x - a.position.x, 0.0, b.position.z - a.position.z)
+	away = away.normalized() if away.length() > 0.001 else Vector3.FORWARD
+	if follow_motion:
+		var mv: Vector3 = a.velocity
+		mv.y = 0.0
+		if mv.length() > 0.3:
+			return (away * 0.6 + mv.normalized()).normalized()
+	return away
+
+
+## 방패 돌격 중인 병사가 몸에 닿은 적을 들이받음 (매 단계 호출)
+var _charge_next := {}  # "병사id:적id" -> 다시 칠 수 있는 시각
+var skill_hits := 0     # 기술로 친 횟수 (테스트 통계용)
+
+func _charge_contacts() -> void:
+	for u in units:
+		if u.team != 0 or u.state != u.State.ACTIVE or u.buff_t <= 0.0 or u.squad == null:
+			continue
+		var sk: Dictionary = Catalog.SKILLS.get(u.squad.type_id(), {})
+		if not sk.has("charge"):
+			continue
+		var ch: Dictionary = sk["charge"]
+		for e in units.duplicate():
+			if e.team != 1 or e.state != e.State.ACTIVE:
+				continue
+			if _flat_dist(u.position, e.position) > u.radius() + e.radius() + float(ch["reach"]):
+				continue
+			if not can_melee(u.position, e.position):
+				continue
+			var key := "%d:%d" % [u.get_instance_id(), e.get_instance_id()]
+			if elapsed < float(_charge_next.get(key, -1.0)):
+				continue
+			_charge_next[key] = elapsed + float(ch["again"])
+			_skill_hit(u, e, float(ch["damage"]), _push_dir(u, e, true) * float(ch["knock"]))
 
 
 func use_item(s) -> bool:
@@ -735,6 +848,14 @@ func kill_unit(u, cause: String) -> void:
 
 # ================================================================ 승패
 
+func intact_house_count() -> int:
+	var n := 0
+	for h in houses:
+		if h.intact:
+			n += 1
+	return n
+
+
 func _check_end() -> void:
 	if finished:
 		return
@@ -743,8 +864,8 @@ func _check_end() -> void:
 		for u in units.duplicate():
 			if u.team == 1:
 				kill_unit(u, "retreat")
-	if player_count() == 0:
-		_finish(false)
+	if player_count() == 0 or intact_house_count() == 0:
+		_finish(false)  # 병사가 모두 죽거나, 지킬 집이 하나도 안 남으면 패배
 	elif wave_index >= waves.size() - 1 and enemy_count() == 0:
 		_finish(true)
 
@@ -1114,7 +1235,10 @@ func _show_result() -> void:
 	if r["won"]:
 		text = "섬을 지켰습니다!\n\n지킨 집 %d/%d   골드 +%d" % [r["houses_saved"], r["houses_total"], r["gold"]]
 	else:
-		text = "출전한 분대가 모두 쓰러졌습니다.\n섬을 지키지 못했습니다."
+		if intact_house_count() == 0:
+			text = "집이 모두 불탔습니다.\n섬을 잃었습니다. (보상 없음)"
+		else:
+			text = "출전한 분대가 모두 쓰러졌습니다.\n섬을 잃었습니다. (보상 없음)"
 	if not (r["wiped"] as Array).is_empty() and r["won"]:
 		text += "\n\n전멸한 분대 %d개는 영영 돌아오지 않습니다." % (r["wiped"] as Array).size()
 	_result_label.text = text
