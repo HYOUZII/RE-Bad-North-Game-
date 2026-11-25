@@ -1196,50 +1196,52 @@ func _setup_hud() -> void:
 	_hud_help = _make_label(15)
 	_hud_help.anchor_left = 1.0
 	_hud_help.anchor_right = 1.0
-	_hud_help.offset_left = -470
+	_hud_help.offset_left = -600
 	_hud_help.offset_right = -16
 	_hud_help.offset_top = 12
 	_hud_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동 (다른 분대로 바꾸려면 그 숫자 클릭)\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n분대를 집 칸에 세우면 병사가 회복됩니다"
+	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동\n다른 분대로 바꾸기: 그 분대 숫자 클릭\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n분대를 집 칸에 세우면 병사가 회복됩니다"
 	layer.add_child(_hud_help)
 
 	# 잠깐 떴다 사라지는 안내 문구 (예: "장비를 쓸 수 없음: 근처에 적 없음")
 	_toast_label = _make_label(20)
-	_toast_label.anchor_left = 0.5
-	_toast_label.anchor_right = 0.5
+	_toast_label.anchor_left = 1.0
+	_toast_label.anchor_right = 1.0
 	_toast_label.anchor_top = 1.0
 	_toast_label.anchor_bottom = 1.0
-	_toast_label.offset_left = -300
-	_toast_label.offset_right = 300
+	_toast_label.offset_left = -640
+	_toast_label.offset_right = -16
 	_toast_label.offset_top = -110
 	_toast_label.offset_bottom = -76
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_toast_label.modulate = Color(1.0, 0.75, 0.6)
 	_toast_label.visible = false
 	layer.add_child(_toast_label)
 
 	# 선택한 분대의 기술/장비 버튼 (화면 아래 가운데)
 	_action_box = HBoxContainer.new()
-	_action_box.anchor_left = 0.5
-	_action_box.anchor_right = 0.5
+	_action_box.anchor_left = 1.0
+	_action_box.anchor_right = 1.0
 	_action_box.anchor_top = 1.0
 	_action_box.anchor_bottom = 1.0
-	_action_box.offset_left = -260
-	_action_box.offset_right = 260
+	_action_box.offset_left = -640
+	_action_box.offset_right = -16
 	_action_box.offset_top = -70
 	_action_box.offset_bottom = -16
-	_action_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_action_box.alignment = BoxContainer.ALIGNMENT_END  # 오른쪽 아래 (왼쪽 아래 분대 목록과 안 겹치게)
 	_action_box.add_theme_constant_override("separation", 12)
 	_action_box.visible = false
 	layer.add_child(_action_box)
 	_skill_btn = Button.new()
 	_skill_btn.add_theme_font_size_override("font_size", 18)
 	_skill_btn.focus_mode = Control.FOCUS_NONE
+	_skill_btn.add_theme_color_override("font_disabled_color", Color(0.8, 0.8, 0.8))  # 못 쓸 때도 이유가 읽히게
 	_skill_btn.pressed.connect(func(): use_skill(selected))
 	_action_box.add_child(_skill_btn)
 	_item_btn = Button.new()
 	_item_btn.add_theme_font_size_override("font_size", 18)
 	_item_btn.focus_mode = Control.FOCUS_NONE
+	_item_btn.add_theme_color_override("font_disabled_color", Color(0.8, 0.8, 0.8))  # 못 쓸 때도 이유가 읽히게
 	_item_btn.pressed.connect(func(): use_item(selected))
 	_action_box.add_child(_item_btn)
 

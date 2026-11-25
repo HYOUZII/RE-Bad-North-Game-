@@ -136,6 +136,35 @@ func _battle_play() -> void:
 		print("  adj click cell ", c, " pick_squad=", picked_sq.index if picked_sq else -1, " px dist to cell center from other centroid=", sp.distance_to(_screen_of(other.centroid() + Vector3(0,0.25,0))))
 	print("ADJACENT TEST: ordered=", adj_ok, " selection stolen by neighbour squad=", adj_steal, " other=", adj_other)
 	await _key(KEY_ESCAPE)
+	# 0b) 선택 중 다른 분대 숫자 라벨 클릭 → 선택 전환
+	await _key(KEY_1)
+	await _frames(1)
+	await _click(_screen_of(bt.squads[1].centroid() + Vector3(0, 1.15, 0)))
+	await _frames(2)
+	print("LABEL SWITCH: selected=", bt.selected.index if bt.selected else -1, " (expect 1)")
+	_save("b_label_switch")
+	# 0c) 적 없을 때 일제 사격 F → 거부, 쿨다운 유지
+	var arch = bt.squads.filter(func(q): return q.type_id() == "archer")[0]
+	await _key(KEY_ESCAPE)
+	await _key(KEY_1 + arch.index)
+	await _frames(2)
+	_save("b_volley_btn_noenemy")
+	await _key(KEY_F)
+	await _frames(3)
+	print("VOLLEY NO ENEMY: skill_cd=", arch.skill_cd, " projectiles=", bt.projectiles.size(), " btn='", bt._skill_btn.text, "' disabled=", bt._skill_btn.disabled)
+	_save("b_volley_refused")
+	# 0d) 장비 G (적 없음/병사 가득) → 거부 + 안내
+	for q in bt.squads:
+		if str(q.commander.get("item", "")) != "":
+			await _key(KEY_ESCAPE)
+			await _key(KEY_1 + q.index)
+			await _frames(2)
+			await _key(KEY_G)
+			await _frames(3)
+			print("ITEM NO-USE: squad ", q.index, " item ", q.commander["item"], " used=", q.item_used, " btn='", bt._item_btn.text, "' disabled=", bt._item_btn.disabled)
+			_save("b_item_refused_%d" % q.index)
+	await _key(KEY_ESCAPE)
+	await _key(KEY_ESCAPE)
 	# 1) 분대 1 숫자 라벨 클릭
 	await _click(_screen_of(bt.squads[0].centroid() + Vector3(0, 0.25, 0)))
 	await _frames(3)
@@ -211,7 +240,7 @@ func _battle_play() -> void:
 	var skills_done := {}
 	var item_done := false
 	var start_wall := Time.get_ticks_msec()
-	while not bt.finished and skills_done.keys().filter(func(k): return k is int).size() < 3 and bt.elapsed < 110.0 and Time.get_ticks_msec() - start_wall < 120000:
+	while not bt.finished and skills_done.keys().filter(func(k): return k is int).size() < 3 and bt.elapsed < 45.0 and Time.get_ticks_msec() - start_wall < 120000:
 		_check_boats()
 		if bt.elapsed > t_shot:
 			t_shot = bt.elapsed + 4.0
@@ -329,6 +358,14 @@ func _test_skill(s) -> void:
 		cd_before.append(u._ranged_cd)
 	var proj_before: int = bt.projectiles.size()
 	var hits_before: int = bt.skill_hits
+	if s.type_id() == "archer" and not s.marching:
+		for d in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
+			if not bt.order_path(s, s.anchor_cell + d).is_empty():
+				await _click(_screen_of(bt.cell_center(s.anchor_cell + d)))
+				await _frames(1)
+				break
+		await _select_squad(s)
+		print("  archer marching before F: ", s.marching)
 	_save("b_skill_pre_%s" % s.type_id())
 	for rec in enemies_before:
 		var md := INF
@@ -506,7 +543,7 @@ func _skill_lab() -> void:
 	for c in Game.roster:
 		c["skill"] = true
 	var B = load("res://scripts/battle/battle.gd")
-	for cls in ["infantry", "pikeman"]:
+	for cls in ["archer", "infantry", "pikeman"]:
 		for trial in range(3):
 			var bt = B.new()
 			var node: Dictionary = Game.map_nodes[0].duplicate()
@@ -547,6 +584,21 @@ func _skill_lab() -> void:
 			print("  pre: squad anchor ", s.anchor_cell, " marching ", s.marching, " selected ", bt.selected == s, " nearest dist ", es.map(func(e): return snappedf(s.units.map(func(u): return bt._flat_dist(u.position, e.position)).min(), 0.01)))
 			_save("lab_%s_%d_pre" % [cls, trial])
 			var hits0: int = bt.skill_hits
+			if cls == "archer":
+				for d in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
+					var nc: Vector2i = s.anchor_cell + d
+					if nc != pick[0] and not bt.order_path(s, nc).is_empty():
+						await _click(_screen_of(bt.cell_center(nc)))
+						break
+				if bt.selected != s:
+					await _key(KEY_1)
+				var p0: int = bt.projectiles.size()
+				await _key(KEY_F)
+				print("LAB archer volley while marching=", s.marching, " projectiles ", p0, " -> ", bt.projectiles.size(), " cd=", s.skill_cd)
+				_save("lab_archer_%d_volley" % trial)
+				bt.queue_free()
+				await _frames(3)
+				continue
 			await _key(KEY_F)
 			var fell := 0
 			var seen := {}
