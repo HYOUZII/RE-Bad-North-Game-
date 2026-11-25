@@ -58,7 +58,7 @@ func _ready() -> void:
 	vb.add_child(title)
 	_gold_label = _label("", 22)
 	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	vb.add_child(_gold_label)
+	vb.add_child(Assets.icon_row("gold", _gold_label, 28))
 	_info_label = _label("", 16)
 	_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(_info_label)
@@ -82,6 +82,14 @@ func _ready() -> void:
 	for node in Game.map_nodes:
 		var b := Button.new()
 		b.custom_minimum_size = Vector2(120, 56)
+		var isle := Assets.get_icon("island")
+		if isle != null:
+			b.icon = isle
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+			b.expand_icon = false
+			b.add_theme_constant_override("icon_max_width", 44)
+			b.custom_minimum_size = Vector2(120, 92)
 		b.add_theme_font_size_override("font_size", 15)
 		b.pressed.connect(_on_node_pressed.bind(int(node["id"])))
 		_map_area.add_child(b)

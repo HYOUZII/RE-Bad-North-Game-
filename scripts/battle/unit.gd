@@ -52,7 +52,8 @@ var _model: Node3D
 var _ring: Node3D
 
 
-func setup(p_battle, p_type: String, p_team: int, hp_mult: float, dmg_mult: float) -> void:
+## tier: 병사 그림 단계("basic" 기본 / "veteran" 숙련 / "elite" 정예)
+func setup(p_battle, p_type: String, p_team: int, hp_mult: float, dmg_mult: float, tier: String = "basic") -> void:
 	battle = p_battle
 	type_id = p_type
 	team = p_team
@@ -60,11 +61,41 @@ func setup(p_battle, p_type: String, p_team: int, hp_mult: float, dmg_mult: floa
 	max_hp = float(def["hp"]) * hp_mult
 	hp = max_hp
 	damage_mult = dmg_mult
-	_model = Assets.get_model(p_type)
+	_model = Assets.get_model(p_type, tier)
 	add_child(_model)
 	# 처음 공격 타이밍을 조금씩 어긋나게(모두 동시에 휘두르지 않게)
 	_attack_cd = randf_range(0.0, 0.4)
 	_ranged_cd = randf_range(0.0, 0.8)
+
+
+## 분대장 모습(지휘관 모델)으로 바꿈 / 되돌림
+var is_leader := false
+var _plain_model: Node3D = null
+
+
+func set_leader(on: bool) -> void:
+	if on == is_leader:
+		return
+	is_leader = on
+	if on:
+		_plain_model = _model
+		_plain_model.visible = false
+		_model = Assets.get_model("commander")
+		add_child(_model)
+	elif _plain_model != null:
+		_model.queue_free()
+		_model = _plain_model
+		_model.visible = true
+		_plain_model = null
+
+
+## 그림 병사라면 동작(공격·맞음) 그림을 재생. 3D 모델·임시 도형이면 아무 일 없음.
+func _anim(action: String) -> void:
+	if _model == null:
+		return
+	for c in _model.get_children():
+		if c.has_method("play"):
+			c.play(action)
 
 
 func radius() -> float:
@@ -231,6 +262,7 @@ func _think_enemy(dt: float) -> void:
 			if _attack_cd <= 0.0:
 				_windup = float(def["windup"])
 				_windup_house = house
+				_anim("attack")
 				_idle_t = 0.0
 				_attack_cd = float(def["cooldown"])
 			return
@@ -246,6 +278,7 @@ func _think_enemy(dt: float) -> void:
 # ---------------------------------------------------------------- 공격
 
 func _start_attack(t, ranged: bool) -> void:
+	_anim("attack")
 	_idle_t = 0.0
 	_windup_target = t
 	_windup_ranged = ranged
@@ -306,6 +339,7 @@ func exit_rest(pos: Vector3) -> void:
 
 ## 피해와 넉백을 받습니다. 체력 0 처리는 battle.gd가 합니다.
 func take_hit(dmg: float, knock: Vector3) -> void:
+	_anim("hit")
 	hp -= dmg
 	knock_vel += knock
 	if knock.length() > 1.0:

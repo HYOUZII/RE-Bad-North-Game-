@@ -143,6 +143,12 @@ func _rebuild_world() -> void:
 		var tent := Assets.get_model("tent")
 		tent.position = Vector3(anchor.x, 0.5, anchor.z) + off
 		_world.add_child(tent)
+		# 천막 옆(카메라 쪽 앞)에 지휘관이 섬. 천막에 가려지지 않게 앞쪽에 둠
+		var cmd := Assets.get_model("commander")
+		cmd.position = tent.position + Vector3(0.30, 0.0, 0.36)
+		cmd.scale = Vector3.ONE * 1.3
+		cmd.rotation.y = PI  # 카메라 쪽(+Z)을 봄
+		_world.add_child(cmd)
 		used[Vector2i(int(round(tent.position.x)), int(round(tent.position.z)))] = true
 		var nl := Label3D.new()
 		nl.text = "%s Lv%d" % [str(c["name"]), int(c["level"])]
@@ -290,7 +296,7 @@ func _setup_ui() -> void:
 	top.add_child(_label("본 섬 - 정비", 28))
 	_gold_label = _label("", 24)
 	_gold_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
-	top.add_child(_gold_label)
+	top.add_child(Assets.icon_row("gold", _gold_label, 30))
 	_info_label = _label("", 15)
 	top.add_child(_info_label)
 

@@ -214,12 +214,28 @@ func centroid() -> Vector3:
 
 
 func _spawn_soldier(pos: Vector3):
-	var u = battle.spawn_unit(type_id(), 0, pos, hp_mult, dmg_mult)
+	var u = battle.spawn_unit(type_id(), 0, pos, hp_mult, dmg_mult, tier())
 	u.squad = self
 	u.speed_mult = speed_mult
 	return u
 
 
+## 병사 그림 단계: Lv1~2 기본, Lv3 숙련, Lv4 정예
+func tier() -> String:
+	var lv := int(commander.get("level", 1))
+	if lv >= 4:
+		return "elite"
+	if lv >= 3:
+		return "veteran"
+	return "basic"
+
+
 func _reindex() -> void:
+	var has_leader := false
 	for i in range(units.size()):
 		units[i].slot_index = i
+		if units[i].is_leader:
+			has_leader = true
+	# 지휘관(분대장)이 쓰러지면 남은 병사 중 첫 번째가 지휘관 모습을 이어받음
+	if not has_leader and not units.is_empty():
+		units[0].set_leader(true)
