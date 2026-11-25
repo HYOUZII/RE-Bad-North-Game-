@@ -218,9 +218,9 @@ func _spawn_squads() -> void:
 		squads.append(s)
 
 
-func spawn_unit(type_id: String, team: int, pos: Vector3, hp_mult: float, dmg_mult: float):
+func spawn_unit(type_id: String, team: int, pos: Vector3, hp_mult: float, dmg_mult: float, tier: String = "basic"):
 	var u = Unit.new()
-	u.setup(self, type_id, team, hp_mult, dmg_mult)
+	u.setup(self, type_id, team, hp_mult, dmg_mult, tier)
 	u.position = pos
 	u.name = "%s_%d" % [type_id, units.size()]
 	_units_root.add_child(u)
@@ -1381,6 +1381,8 @@ func _update_action_buttons() -> void:
 		var why := skill_block_reason(selected)
 		_skill_btn.text = "[F] %s" % nm if why == "" else "[F] %s (%s)" % [nm, why]
 		_skill_btn.disabled = why != ""
+		_skill_btn.icon = Assets.get_icon(str(Assets.SKILL_ICONS.get(selected.type_id(), "")))
+		_skill_btn.add_theme_constant_override("icon_max_width", 32)
 	else:
 		_skill_btn.visible = false
 	var item := str(selected.commander.get("item", ""))
