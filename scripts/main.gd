@@ -39,7 +39,7 @@ func _show_campaign() -> void:
 
 func _start_battle(node_id: int) -> void:
 	var b := Battle.new()
-	b.setup(Game.map_nodes[node_id], Game.roster)
+	b.setup(Game.map_nodes[node_id], Game.deployed_commanders())
 	b.battle_ended.connect(_on_battle_ended.bind(node_id))
 	_swap(b)
 

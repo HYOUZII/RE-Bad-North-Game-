@@ -20,8 +20,11 @@ func _ready() -> void:
 	_save("title")
 	main.queue_free()
 	Game.new_run(777)
-	Game.gold = 12
+	Game.gold = 30
 	Game._add_commander("militia")
+	Game.roster[0]["skill"] = true
+	Game.roster[0]["item"] = "bomb"
+	Game.inventory.append("armor")
 	Game.changed.emit()
 	var map := CampaignScreen.new()
 	add_child(map)
@@ -31,7 +34,7 @@ func _ready() -> void:
 
 	var b := Battle.new()
 	b.auto_play = true
-	b.setup(Game.map_nodes[3], Game.roster)
+	b.setup(Game.map_nodes[3], Game.deployed_commanders())
 	add_child(b)
 	await _frames(5)
 	_save("battle_start")
