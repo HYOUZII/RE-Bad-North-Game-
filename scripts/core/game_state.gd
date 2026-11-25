@@ -4,23 +4,31 @@ extends Node
 ## - roster: 살아 있는 지휘관 목록. 분대가 전멸하면 그 지휘관은 영영 사라집니다(퍼마데스).
 ## - gold: 섬을 지키고 받은 골드. 지휘관 승급/레벨업에 씁니다.
 ## - map_nodes: 캠페인 지도의 섬들. 왼쪽에서 오른쪽으로 나아가며, 맨 끝 섬을 지키면 승리.
+## - 골드 쓰는 곳: 레벨업, 민병 승급, 병종 기술 배우기, 장비 사기, 지휘관 고용 (가격은 catalog.gd)
+## - 한 섬에는 최대 4명까지 출전. 나머지는 쉬면서 기다립니다.
 ## 화면은 changed 신호를 받아 다시 그립니다.
 
 signal changed
 
 const UnitDefs := preload("res://scripts/battle/unit_defs.gd")
+const Catalog := preload("res://scripts/core/catalog.gd")
 
 const COLUMNS := 7               # 지도 열 수 (마지막 열 = 최종 섬)
 const MAX_LEVEL := 4
 const MAX_ROSTER := 6
+const MAX_DEPLOY := 4            # 한 섬에 데려갈 수 있는 최대 분대 수
+const SHOP_SIZE := 3             # 섬을 지킬 때마다 상점에 새로 들어오는 장비 수
 const PROMOTE_COST := 4          # 민병 → 병종 승급 비용
-const BASE_SOLDIERS := 4         # 레벨 1 분대 = 4 + 1 = 5명
+const BASE_SOLDIERS := 6         # 레벨 1 분대 = 6 + 1 = 7명
 
 const COMMANDER_NAMES := ["하랑", "도윤", "서진", "이안", "무열", "청아", "단비", "가온", "루다", "태오", "미르", "소을", "윤슬", "새봄"]
 const ISLAND_NAMES := ["안개곶", "갈매기섬", "붉은바위", "소금언덕", "바람목", "등대섬", "검은모래", "이끼섬", "고래등", "서리곶", "외딴섬", "솔숲섬", "물새목", "조약돌섬", "마지막 성채"]
 
 var gold := 0
-var roster: Array = []           # [{id, name, cls, level}]
+var roster: Array = []           # [{id, name, cls, level, skill, item}]
+var deploy_ids: Array = []       # 다음 전투에 출전할 지휘관 id
+var inventory: Array = []        # 아직 아무에게도 달지 않은 장비 id
+var shop: Array = []             # 상점에서 팔고 있는 장비 id
 var map_nodes: Array = []        # [{id, col, row, rows, name, difficulty, seed, radius, houses, links, recruit, final, cleared}]
 var current_node := -1           # 마지막으로 지킨 섬 (-1 = 출발 전)
 var run_seed := 0
@@ -48,7 +56,12 @@ func new_run(seed_value: int = 0) -> void:
 	_shuffle(_name_pool, rng)
 	for cls in UnitDefs.PLAYER_CLASSES:
 		_add_commander(cls)
+	inventory.clear()
+	deploy_ids.clear()
+	for c in roster:
+		deploy_ids.append(c["id"])
 	_build_map(rng)
+	_refresh_shop(rng)
 	_request_island_names()
 	changed.emit()
 
@@ -57,9 +70,11 @@ func new_run(seed_value: int = 0) -> void:
 
 func _add_commander(cls: String) -> Dictionary:
 	var nm: String = _name_pool.pop_back() if not _name_pool.is_empty() else "지휘관%d" % _next_cid
-	var c := {"id": _next_cid, "name": nm, "cls": cls, "level": 1}
+	var c := {"id": _next_cid, "name": nm, "cls": cls, "level": 1, "skill": false, "item": ""}
 	_next_cid += 1
 	roster.append(c)
+	if deploy_ids.size() < MAX_DEPLOY:
+		deploy_ids.append(c["id"])
 	return c
 
 
@@ -71,11 +86,15 @@ func find_commander(cid: int) -> Dictionary:
 
 
 func soldiers_for(c: Dictionary) -> int:
-	return BASE_SOLDIERS + int(c.get("level", 1))
+	return BASE_SOLDIERS + int(c.get("level", 1)) + (2 if c.get("item", "") == "banner" else 0)
 
 
 func hp_mult(c: Dictionary) -> float:
-	return 1.0 + 0.15 * float(int(c.get("level", 1)) - 1)
+	return (1.0 + 0.15 * float(int(c.get("level", 1)) - 1)) * (1.3 if c.get("item", "") == "armor" else 1.0)
+
+
+func speed_mult(c: Dictionary) -> float:
+	return 1.3 if c.get("item", "") == "boots" else 1.0
 
 
 func dmg_mult(c: Dictionary) -> float:
@@ -114,6 +133,94 @@ func promote(cid: int, cls: String) -> bool:
 	return true
 
 
+# ---------------------------------------------------------------- 기술, 장비, 고용, 출전
+
+func can_buy_skill(c: Dictionary) -> bool:
+	return Catalog.SKILLS.has(str(c["cls"])) and not bool(c.get("skill", false)) and gold >= Catalog.SKILL_COST
+
+
+func buy_skill(cid: int) -> bool:
+	var c := find_commander(cid)
+	if c.is_empty() or not can_buy_skill(c):
+		return false
+	gold -= Catalog.SKILL_COST
+	c["skill"] = true
+	changed.emit()
+	return true
+
+
+func can_buy_item(item: String) -> bool:
+	return item in shop and gold >= Catalog.ITEM_COST
+
+
+func buy_item(item: String) -> bool:
+	if not can_buy_item(item):
+		return false
+	gold -= Catalog.ITEM_COST
+	shop.erase(item)
+	inventory.append(item)
+	changed.emit()
+	return true
+
+
+## 창고의 장비를 지휘관에게 답니다. 한 번 달면 뗄 수 없습니다.
+func equip(cid: int, item: String) -> bool:
+	var c := find_commander(cid)
+	if c.is_empty() or str(c.get("item", "")) != "" or not (item in inventory):
+		return false
+	inventory.erase(item)
+	c["item"] = item
+	changed.emit()
+	return true
+
+
+func can_recruit() -> bool:
+	return roster.size() < MAX_ROSTER and gold >= Catalog.RECRUIT_COST
+
+
+func recruit() -> bool:
+	if not can_recruit():
+		return false
+	gold -= Catalog.RECRUIT_COST
+	_add_commander("militia")
+	changed.emit()
+	return true
+
+
+func is_deployed(cid: int) -> bool:
+	return cid in deploy_ids
+
+
+func toggle_deploy(cid: int) -> void:
+	if cid in deploy_ids:
+		if deploy_ids.size() > 1:
+			deploy_ids.erase(cid)
+	elif deploy_ids.size() < MAX_DEPLOY:
+		deploy_ids.append(cid)
+	changed.emit()
+
+
+## 이번 전투에 나갈 지휘관 목록 (지도 화면에서 고른 순서대로)
+func deployed_commanders() -> Array:
+	var out: Array = []
+	for c in roster:
+		if c["id"] in deploy_ids:
+			out.append(c)
+	if out.is_empty() and not roster.is_empty():
+		out.append(roster[0])
+	return out
+
+
+func _refresh_shop(rng: RandomNumberGenerator = null) -> void:
+	var ids: Array = Catalog.ITEMS.keys()
+	shop.clear()
+	# 겹치지 않게 SHOP_SIZE개 뽑기
+	for _i in range(min(SHOP_SIZE, ids.size())):
+		var k: int = rng.randi_range(0, ids.size() - 1) if rng != null else randi() % ids.size()
+		shop.append(ids[k])
+		ids.remove_at(k)
+
+
 # ---------------------------------------------------------------- 지도
 
 func _build_map(rng: RandomNumberGenerator) -> void:
@@ -134,8 +241,8 @@ func _build_map(rng: RandomNumberGenerator) -> void:
 				"name": ISLAND_NAMES[-1] if final else str(names[nid % names.size()]),
 				"difficulty": difficulty,
 				"seed": rng.randi_range(1, 1 << 30),
-				"radius": clampi(6 + difficulty / 2, 6, 9),
-				"houses": clampi(3 + difficulty / 2 + rng.randi_range(0, 1), 3, 6),
+				"radius": clampi(9 + difficulty / 2, 9, 12),
+				"houses": clampi(4 + difficulty / 2 + rng.randi_range(0, 1), 4, 7),
 				"links": [],
 				"recruit": (not final) and col >= 1 and rng.randf() < 0.4,
 				"final": final,
@@ -188,9 +295,18 @@ func reachable_nodes() -> Array:
 func apply_battle_result(node_id: int, result: Dictionary) -> void:
 	var wiped: Array = result.get("wiped", [])
 	roster = roster.filter(func(c): return not (c["id"] in wiped))
-	if not bool(result.get("won", false)) or roster.is_empty():
+	deploy_ids = deploy_ids.filter(func(id): return not (id in wiped))
+	if roster.is_empty():
 		run_over = true
 		run_won = false
+		changed.emit()
+		return
+	if deploy_ids.is_empty():
+		for c in roster:
+			if deploy_ids.size() < MAX_DEPLOY:
+				deploy_ids.append(c["id"])
+	if not bool(result.get("won", false)):
+		# 섬을 못 지켰지만 쉬던 지휘관이 남아 있으면 원정은 계속 (같은 자리에서 다시 고르기)
 		changed.emit()
 		return
 	gold += int(result.get("gold", 0))
@@ -200,6 +316,7 @@ func apply_battle_result(node_id: int, result: Dictionary) -> void:
 	islands_cleared += 1
 	if bool(node["recruit"]) and roster.size() < MAX_ROSTER:
 		_add_commander("militia")
+	_refresh_shop()
 	if bool(node["final"]):
 		run_over = true
 		run_won = true

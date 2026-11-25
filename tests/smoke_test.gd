@@ -44,18 +44,26 @@ func _run(seed_value: int) -> bool:
 	while not Game.run_over and guard < 12:
 		guard += 1
 		var options: Array = Game.reachable_nodes()
+		if options.is_empty():
+			break
 		var nid: int = options[0]
 		var b := Battle.new()
 		b.auto_play = true
 		b.speed = 4.0
-		b.setup(Game.map_nodes[nid], Game.roster)
+		b.setup(Game.map_nodes[nid], Game.deployed_commanders())
+		b.skill_used.connect(func(_s, k): _count("skill_" + k))
+		b.item_used.connect(func(_s, k): _count("item_" + k))
 		b.unit_died.connect(func(u, cause): _count("died_%s_%s" % ["player" if u.team == 0 else "enemy", cause]))
 		b.house_burned.connect(func(_h): _count("house_burned"))
 		b.squad_reinforced.connect(func(_s): _count("reinforced"))
 		add_child(b)
-		var timer := get_tree().create_timer(600.0)
+		var timer := get_tree().create_timer(150.0)
 		var on_timeout := func():
 			push_error("battle timeout")
+			for u in b.units:
+				if u.team == 1:
+					var c: Vector2i = b.world_to_cell(u.position)
+					print("  stuck enemy %s cell=%s walk=%s state=%d target=%s path=%s" % [u.type_id, c, b.island.is_walkable(c), u.state, u._target, u._path])
 			b._finish(false)
 		timer.timeout.connect(on_timeout)
 		var result: Dictionary = await b.battle_ended
@@ -78,6 +86,17 @@ func _spend_gold() -> void:
 		for c in Game.roster:
 			if str(c["cls"]) == "militia" and Game.can_promote(c):
 				changed = Game.promote(int(c["id"]), ["infantry", "archer", "pikeman"][randi() % 3]) or changed
+		for c in Game.roster:
+			if Game.can_buy_skill(c):
+				changed = Game.buy_skill(int(c["id"])) or changed
+		for it in Game.shop.duplicate():
+			if Game.inventory.size() < 1 and Game.can_buy_item(it):
+				changed = Game.buy_item(it) or changed
+		for c in Game.roster:
+			if str(c["item"]) == "" and not Game.inventory.is_empty():
+				changed = Game.equip(int(c["id"]), Game.inventory[0]) or changed
+		if Game.roster.size() < 4 and Game.can_recruit():
+			changed = Game.recruit() or changed
 		var cheapest = null
 		for c in Game.roster:
 			if Game.can_level_up(c) and (cheapest == null or Game.level_cost(c) < Game.level_cost(cheapest)):

@@ -6,5 +6,6 @@
 - 원작(Bad North)의 이름, 아트, 레벨, 음악을 복제하지 않는다. 장르 메커니즘만 참고.
 - 사용자는 엔진 초보다. 주석과 문서는 한국어로, 쉬운 말로 쓴다.
 - 커밋 전 `gdparse`로 문법 검사 (pip install gdtoolkit==4.5.0).
-- 커밋 전 자동 플레이 테스트: `godot --headless --path . --fixed-fps 60 res://tests/smoke_test.tscn -- --runs=5` → `SMOKE_TEST_DONE`, SCRIPT ERROR 0건. 단순 지휘 AI 기준 승률 30~50%가 현재 목표 난이도.
+- 커밋 전 자동 플레이 테스트: `godot --headless --path . --fixed-fps 60 res://tests/smoke_test.tscn -- --runs=5` → `SMOKE_TEST_DONE`, SCRIPT ERROR 0건. 단순 지휘 AI 기준 평균 5~6섬 도달(승률 10~20%)이 현재 목표 난이도. 사람은 계단·길목을 활용하므로 더 쉽다.
 - 전투 이벤트(타격, 사망, 추락, 집 피해)는 `battle.gd`의 signal로 내보낸다. 손맛 효과는 여기에 연결.
+- 섬 안 이동 규칙: 같은 높이 또는 계단으로만 이동(`island.can_cross`, `grid_nav.can_step`). 근접 공격도 `battle.can_melee`로 절벽 너머 금지.

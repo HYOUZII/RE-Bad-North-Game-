@@ -20,10 +20,13 @@ var anchor_cell := Vector2i.ZERO
 var marching := false
 var march_t := 0.0
 var regen_t := 0.0
+var speed_mult: float = 1.0
+var skill_cd := 0.0          # 기술을 다시 쓸 수 있을 때까지 남은 시간
+var item_used := false       # 이번 전투에서 장비(1회용)를 썼는가
 var label: Label3D
 
 
-func setup(p_battle, p_commander: Dictionary, p_index: int, cell: Vector2i, soldiers: int, p_hp_mult: float, p_dmg_mult: float) -> void:
+func setup(p_battle, p_commander: Dictionary, p_index: int, cell: Vector2i, soldiers: int, p_hp_mult: float, p_dmg_mult: float, p_speed_mult: float = 1.0) -> void:
 	battle = p_battle
 	commander = p_commander
 	index = p_index
@@ -31,6 +34,7 @@ func setup(p_battle, p_commander: Dictionary, p_index: int, cell: Vector2i, sold
 	max_soldiers = soldiers
 	hp_mult = p_hp_mult
 	dmg_mult = p_dmg_mult
+	speed_mult = p_speed_mult
 	for i in range(max_soldiers):
 		units.append(_spawn_soldier(slot_position(i)))
 	_reindex()
@@ -42,6 +46,28 @@ func type_id() -> String:
 
 func is_wiped() -> bool:
 	return units.is_empty()
+
+
+func has_skill() -> bool:
+	return bool(commander.get("skill", false)) and type_id() != "militia"
+
+
+func skill_ready() -> bool:
+	return has_skill() and skill_cd <= 0.0
+
+
+func item_ready() -> bool:
+	var item := str(commander.get("item", ""))
+	return item != "" and not item_used and bool(battle.Catalog.ITEMS.get(item, {}).get("active", false))
+
+
+## 쓰러진 병사를 모두 그 자리에서 되살림 (뿔나팔)
+func refill() -> void:
+	var c := centroid()
+	while units.size() < max_soldiers:
+		var u = _spawn_soldier(c + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2)))
+		units.append(u)
+	_reindex()
 
 
 func anchor_pos() -> Vector3:
@@ -81,6 +107,7 @@ func tick(dt: float) -> void:
 		_reindex()
 	if units.is_empty():
 		return
+	skill_cd = max(0.0, skill_cd - dt)
 
 	if marching:
 		march_t += dt
@@ -118,6 +145,7 @@ func centroid() -> Vector3:
 func _spawn_soldier(pos: Vector3):
 	var u = battle.spawn_unit(type_id(), 0, pos, hp_mult, dmg_mult)
 	u.squad = self
+	u.speed_mult = speed_mult
 	return u
 
 

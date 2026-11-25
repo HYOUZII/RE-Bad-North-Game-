@@ -12,6 +12,7 @@ enum State { BOAT, ACTIVE, FALLING, DEAD }
 
 const STUN_SPEED := 0.35        # 넉백 속도가 이보다 크면 아무것도 못 함(비틀거림)
 const KNOCK_FRICTION := 7.0     # 넉백이 줄어드는 속도
+const STUCK_RETREAT_TIME := 25.0  # 적이 이 시간 동안 꼼짝 못 하면 퇴각(사라짐)
 const FALL_TIME := 0.8          # 바다에 빠진 뒤 사라질 때까지 시간
 const FALL_DAMAGE_PER_STEP := 8.0  # 넉백으로 2단 이상 절벽에서 떨어질 때 1단당 피해
 
@@ -24,6 +25,9 @@ var slot_index: int = 0
 var max_hp: float = 1.0
 var hp: float = 1.0
 var damage_mult: float = 1.0
+var speed_mult: float = 1.0     # 장비(가죽 장화) 등 항상 붙는 이동속도 배율
+var buff: Dictionary = {}       # 기술 사용 중 배율 (catalog.gd SKILLS의 buff)
+var buff_t := 0.0               # 남은 기술 시간
 var state: int = State.ACTIVE
 var velocity := Vector3.ZERO    # 화살 조준(예측 사격)용
 var knock_vel := Vector3.ZERO
@@ -40,8 +44,10 @@ var _path: Array[Vector2i] = []
 var _path_goal := Vector2i(1 << 20, 1 << 20)
 var _path_age := 0.0
 var _fall_t := 0.0
+var _idle_t := 0.0
 var _last_pos := Vector3.ZERO
 var _model: Node3D
+var _ring: Node3D
 
 
 func setup(p_battle, p_type: String, p_team: int, hp_mult: float, dmg_mult: float) -> void:
@@ -65,6 +71,22 @@ func radius() -> float:
 
 func is_ranged() -> bool:
 	return float(def["range"]) > 0.0
+
+
+## 기술 효과 배율 (기술 사용 중이 아니면 1)
+func mod(key: String) -> float:
+	if buff_t <= 0.0:
+		return 1.0
+	return float(buff.get(key, 1.0))
+
+
+func apply_buff(b: Dictionary, duration: float) -> void:
+	buff = b
+	buff_t = duration
+	if _ring == null:
+		_ring = Assets.get_model("buff_ring")
+		add_child(_ring)
+	_ring.visible = true
 
 
 ## 공격 대상이 될 수 있는 상태인가 (배 위 = 화살로만 맞힐 수 있음)
@@ -91,6 +113,10 @@ func tick(dt: float) -> void:
 
 	_attack_cd -= dt
 	_ranged_cd -= dt
+	if buff_t > 0.0:
+		buff_t -= dt
+		if buff_t <= 0.0 and _ring != null:
+			_ring.visible = false
 	_retarget_t -= dt
 	_path_age += dt
 
@@ -136,7 +162,7 @@ func _think_player(dt: float) -> void:
 		var d := _flat_dist(_target.position)
 		var gap: float = d - radius() - _target.radius()
 		# 근접 거리 안이면 근접 공격 (궁수도 바로 붙은 적에게는 칼을 씀)
-		if _target.state == State.ACTIVE and gap <= float(def["reach"]):
+		if _target.state == State.ACTIVE and gap <= float(def["reach"]) and battle.can_melee(position, _target.position):
 			_face(_target.position)
 			if _attack_cd <= 0.0:
 				_start_attack(_target, false)
@@ -156,13 +182,21 @@ func _think_player(dt: float) -> void:
 # ---------------------------------------------------------------- 적 행동
 
 func _think_enemy(dt: float) -> void:
+	# 안전장치: 오랫동안 제자리에서 아무것도 못 하면(길이 막힘 등) 배로 도망간 것으로 처리
+	if velocity.length() < 0.05 and _windup <= 0.0:
+		_idle_t += dt
+		if _idle_t > STUCK_RETREAT_TIME:
+			battle.kill_unit(self, "retreat")
+			return
+	else:
+		_idle_t = 0.0
 	if _retarget_t <= 0.0 or not valid(_target):
 		_target = battle.find_target_for_enemy(self)
 		_retarget_t = 0.3
 	if valid(_target):
 		var d := _flat_dist(_target.position)
 		var gap: float = d - radius() - _target.radius()
-		if gap <= float(def["reach"]):
+		if gap <= float(def["reach"]) and battle.can_melee(position, _target.position):
 			_face(_target.position)
 			if _attack_cd <= 0.0:
 				_start_attack(_target, false)
@@ -182,6 +216,7 @@ func _think_enemy(dt: float) -> void:
 			if _attack_cd <= 0.0:
 				_windup = float(def["windup"])
 				_windup_house = house
+				_idle_t = 0.0
 				_attack_cd = float(def["cooldown"])
 			return
 		_move_toward(house.position, dt, 0.0)
@@ -196,12 +231,13 @@ func _think_enemy(dt: float) -> void:
 # ---------------------------------------------------------------- 공격
 
 func _start_attack(t, ranged: bool) -> void:
+	_idle_t = 0.0
 	_windup_target = t
 	_windup_ranged = ranged
 	_windup_house = null
 	if ranged:
 		_windup = 0.35
-		_ranged_cd = float(def["ranged_cooldown"]) * randf_range(0.9, 1.1)
+		_ranged_cd = float(def["ranged_cooldown"]) * mod("ranged_cd") * randf_range(0.9, 1.1)
 	else:
 		_windup = float(def["windup"])
 		_attack_cd = float(def["cooldown"]) * randf_range(0.9, 1.1)
@@ -224,7 +260,7 @@ func _resolve_attack() -> void:
 		battle.fire_arrow(self, t)
 	elif t.state == State.ACTIVE:
 		var gap: float = _flat_dist(t.position) - radius() - t.radius()
-		if gap <= float(def["reach"]) + 0.15:
+		if gap <= float(def["reach"]) + 0.15 and battle.can_melee(position, t.position):
 			battle.melee_hit(self, t)
 
 
@@ -265,7 +301,7 @@ func _move_toward(goal: Vector3, dt: float, stop_dist: float) -> void:
 	var dist := dir.length()
 	if dist < 0.001:
 		return
-	var step: float = min(dist, float(def["speed"]) * dt)
+	var step: float = min(dist, float(def["speed"]) * speed_mult * mod("speed") * dt)
 	var move_dir: Vector3 = battle.steer_around_houses(position, dir / dist, radius(), dist)
 	if not _try_move(move_dir * step, false):
 		_path_age = 2.0  # 막혔으면 다음에 길 다시 찾기
@@ -313,14 +349,17 @@ func _apply_move(delta: Vector3, knock: bool) -> bool:
 		position.x = newp.x
 		position.z = newp.z
 		return true
+	if battle.nav.can_step(c0, c1):
+		position.x = newp.x
+		position.z = newp.z
+		return true
+	# 길이 아닌 곳: 걸어서는 못 감. 넉백일 때만 절벽 아래로 떨어질 수 있음
 	var dh := int(tiles[c1]) - int(tiles[c0])
-	if dh > 1:
-		return false  # 2단 이상 절벽은 못 올라감
-	if dh < -1 and not knock:
-		return false  # 걸어서는 2단 이상 뛰어내리지 않음
+	if not knock or dh >= 0 or battle.island.blocked.has(c1):
+		return false
 	position.x = newp.x
 	position.z = newp.z
-	if dh < -1:
+	if dh <= -2:
 		battle.fall_damage(self, FALL_DAMAGE_PER_STEP * float(-dh - 1))
 	return true
 
