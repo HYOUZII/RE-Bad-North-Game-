@@ -44,8 +44,20 @@ func _ready() -> void:
 		_save("battle_%ds" % int(t))
 	# 분대 선택 화면(마커 표시) 흉내
 	b.auto_play = false
+	# 흰 점선(행군 경로) 보이게: 분대 2를 먼 칸으로 보냄
+	var far_cells: Array = b.island.tiles.keys().filter(func(c): return b.island.is_walkable(c))
+	far_cells.sort_custom(func(x, y): return Vector2(x - b.squads[1].anchor_cell).length() > Vector2(y - b.squads[1].anchor_cell).length())
+	for c in far_cells:
+		if b.try_order(b.squads[1], c):
+			break
+	await _frames(20)
+	# 노란 점선(미리보기): 분대 1 선택 + 몇 칸 떨어진 곳에 마우스
 	b._select(b.squads[0])
-	b._hover_cell = b.squads[0].anchor_cell + Vector2i(1, 0)
+	for c in far_cells:
+		var dist := Vector2(c - b.squads[0].anchor_cell).length()
+		if dist > 4.0 and dist < 7.0 and not b.order_path(b.squads[0], c).is_empty():
+			b._hover_cell = c
+			break
 	await _frames(3)
 	_save("battle_selected")
 	get_tree().quit()

@@ -77,6 +77,9 @@ var _fx_root: Node3D
 var _hover_cell := NO_CELL
 var _sel_marker: Node3D
 var _hover_marker: Node3D
+var _hover_bad: Node3D
+var _path_root: Node3D
+var _path_key := ""
 var _hud_top: Label
 var _hud_squads: Label
 var _hud_help: Label
@@ -132,6 +135,12 @@ func _ready() -> void:
 	_hover_marker = Assets.get_model("hover_marker")
 	_hover_marker.visible = false
 	add_child(_hover_marker)
+	_hover_bad = Assets.get_model("hover_marker_bad")
+	_hover_bad.visible = false
+	add_child(_hover_bad)
+	_path_root = Node3D.new()
+	_path_root.name = "PathDots"
+	add_child(_path_root)
 
 	_setup_hud()
 
@@ -462,6 +471,58 @@ func nearest_intact_house(pos: Vector3):
 	return best
 
 
+## 걸어서 가는 길이 가장 짧은 멀쩡한 집 (절벽을 돌아가야 하면 그만큼 멀다고 봄)
+func nearest_house_by_path(pos: Vector3):
+	var from := world_to_cell(pos)
+	var best = null
+	var best_len := INF
+	for h in houses:
+		if not h.intact:
+			continue
+		var p: Array = nav.find_path(from, h.cell)
+		var length := INF
+		if from == h.cell:
+			length = 0.0
+		elif not p.is_empty():
+			length = 0.0
+			for i in range(1, p.size()):
+				length += Vector2(p[i] - p[i - 1]).length()
+		if length < best_len:
+			best_len = length
+			best = h
+	if best == null:
+		return nearest_intact_house(pos)  # 길이 없으면 직선거리로라도
+	return best
+
+
+## 다른 분대가 이미 자리 잡은 칸인가 (한 칸에는 분대 하나만)
+func cell_taken(cell: Vector2i, except_squad = null) -> bool:
+	for s in squads:
+		if s != except_squad and not s.is_wiped() and s.anchor_cell == cell:
+			return true
+	return false
+
+
+## 분대가 이 칸으로 갈 수 있으면 경로(칸 목록)를, 못 가면 빈 배열을 돌려줍니다.
+func order_path(s, cell: Vector2i) -> Array:
+	if s == null or s.is_wiped() or not island.is_walkable(cell) or cell_taken(cell, s):
+		return []
+	var from := world_to_cell(s.centroid())
+	if not nav.tiles.has(from) or not island.is_walkable(from):
+		from = s.anchor_cell
+	if from == cell:
+		return [cell]
+	return nav.find_path(from, cell)
+
+
+func try_order(s, cell: Vector2i) -> bool:
+	var path := order_path(s, cell)
+	if path.is_empty():
+		return false
+	s.order_move(cell, path)
+	return true
+
+
 func nearest_player_unit(pos: Vector3):
 	var best = null
 	var best_d := INF
@@ -732,9 +793,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select(sq)
 			elif selected != null:
 				var cell := _pick_cell(mb.position)
-				if cell != NO_CELL and island.is_walkable(cell):
-					selected.order_move(cell)
-				_select(null)  # 명령을 내리면 선택 해제(시간도 원래대로)
+				# 갈 수 없는 칸(절벽 너머 막힘, 바위, 다른 분대 자리)이면 선택을 유지해서 다시 고르게 함
+				if cell != NO_CELL and try_order(selected, cell):
+					_select(null)  # 명령을 내리면 선택 해제(시간도 원래대로)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		_hover_cell = _pick_cell((event as InputEventMouseMotion).position)
@@ -809,13 +870,62 @@ func _process(_delta: float) -> void:
 	if selected != null and not selected.is_wiped():
 		_sel_marker.visible = true
 		_sel_marker.position = cell_center(selected.anchor_cell) + Vector3(0, 0.01, 0)
-		_hover_marker.visible = _hover_cell != NO_CELL
-		if _hover_marker.visible:
+		var hover_ok := _hover_cell != NO_CELL and not order_path(selected, _hover_cell).is_empty()
+		_hover_marker.visible = _hover_cell != NO_CELL and hover_ok
+		_hover_bad.visible = _hover_cell != NO_CELL and not hover_ok
+		if _hover_cell != NO_CELL:
 			_hover_marker.position = cell_center(_hover_cell) + Vector3(0, 0.02, 0)
+			_hover_bad.position = _hover_marker.position
 	else:
 		_sel_marker.visible = false
 		_hover_marker.visible = false
+		_hover_bad.visible = false
+	_refresh_paths()
 	_update_hud()
+
+
+## 이동 경로 점선: 행군 중인 분대는 흰 점, 선택 중 미리보기는 노란 점.
+## 경로가 바뀔 때만 점을 다시 만듭니다.
+func _refresh_paths() -> void:
+	var lines: Array = []  # [[칸 목록, 미리보기 여부, 시작 위치]]
+	for s in squads:
+		if s.marching and not s.is_wiped() and s.path_cells.size() > 0:
+			lines.append([s.path_cells, false, null])
+	if selected != null and not selected.is_wiped() and _hover_cell != NO_CELL:
+		var p := order_path(selected, _hover_cell)
+		if not p.is_empty():
+			lines.append([p, true, selected.centroid()])
+	var key := str(lines.map(func(l): return [l[0], l[1]]))
+	if key == _path_key:
+		return
+	_path_key = key
+	for c in _path_root.get_children():
+		c.queue_free()
+	for l in lines:
+		var pts: Array = []
+		if l[2] != null:
+			pts.append(l[2])
+		for c in l[0]:
+			pts.append(Vector3(c.x, 0.0, c.y))
+		_spawn_dots(pts, "path_dot_preview" if l[1] else "path_dot")
+
+
+func _spawn_dots(pts: Array, model_id: String) -> void:
+	const GAP := 0.22  # 점 사이 간격(m)
+	var carry := 0.0
+	for i in range(1, pts.size()):
+		var a: Vector3 = pts[i - 1]
+		var b: Vector3 = pts[i]
+		var seg := Vector2(b.x - a.x, b.z - a.z)
+		var length := seg.length()
+		var t := carry
+		while t < length:
+			var p := a.lerp(b, t / length)
+			var dot := Assets.get_model(model_id)
+			dot.position = Vector3(p.x, ground_y(p) + 0.03, p.z)
+			_path_root.add_child(dot)
+			t += GAP
+		carry = t - length
 
 
 func _setup_world() -> void:
@@ -1045,7 +1155,7 @@ func _auto_command(dt: float) -> void:
 			var hh = nearest_intact_house(s.centroid())
 			if hh != null:
 				if hh.cell != s.anchor_cell:
-					s.order_move(hh.cell)
+					try_order(s, hh.cell)
 				continue
 		if landed.is_empty():
 			if not house_list.is_empty():
@@ -1068,8 +1178,12 @@ func _auto_command(dt: float) -> void:
 				goal = tc
 			if _flat_dist(cell_center(goal), s.anchor_pos()) < 1.2:
 				goal = NO_CELL
-		if goal != NO_CELL and goal != s.anchor_cell and island.tiles.has(goal):
-			s.order_move(goal)
+		if goal != NO_CELL and goal != s.anchor_cell:
+			if not try_order(s, goal):
+				# 그 칸이 막혔으면 바로 옆 빈칸이라도
+				for d in GridNav.DIRS8:
+					if try_order(s, goal + d):
+						break
 
 
 func _best_archer_cell(near: Vector2i) -> Vector2i:

@@ -7,7 +7,8 @@ extends RefCounted
 ## - speed: 이동 속도     - knock: 근접 넉백 세기   - mass: 무게(클수록 덜 밀림)
 ## - radius: 몸 반지름    - ranged_taken: 화살 피해 배율(방패=0.25)
 ## - range / ranged_damage / ranged_cooldown: 활 사거리, 화살 공격력, 활 공격 간격 (range 0 = 활 없음)
-## - aggro: 적이 아군을 발견하고 쫓아가는 거리
+## - aggro: 적이 아군과 싸우기 시작하는 거리. 적은 기본적으로 가장 가까운 집(길 거리 기준)으로 가고,
+##          이 거리 안에 들어온(길을 막는) 아군하고만 싸웁니다.
 ## - house_damage: 집 공격력  - large: 큰 몸집 여부   - bonus_vs_large: 큰 적에게 주는 피해 배율
 ## - shielded: 방패를 든 적(화살에 강함)   - bonus_vs_shield: 방패 든 적에게 주는 피해 배율
 ##
@@ -29,7 +30,7 @@ const DEFAULTS := {
 	"range": 0.0,
 	"ranged_damage": 0.0,
 	"ranged_cooldown": 2.0,
-	"aggro": 1.8,
+	"aggro": 0.7,
 	"house_damage": 5.0,
 	"large": false,
 	"bonus_vs_large": 1.0,
@@ -54,16 +55,16 @@ const TYPES := {
 
 	# ---- 적 ----
 	"raider": {"name": "약탈자", "hp": 16.0, "damage": 5.0, "reach": 0.25, "cooldown": 1.1, "windup": 0.3,
-		"speed": 1.4, "knock": 0.9, "aggro": 1.8, "house_damage": 6.0},
+		"speed": 1.4, "knock": 0.9, "aggro": 0.7, "house_damage": 6.0},
 	"raider_archer": {"name": "약탈자 궁수", "hp": 13.0, "damage": 2.0, "reach": 0.22, "cooldown": 1.2,
 		"speed": 1.4, "knock": 0.5, "range": 3.0, "ranged_damage": 4.0, "ranged_cooldown": 2.6,
-		"aggro": 3.0, "house_damage": 3.0},
+		"aggro": 2.0, "house_damage": 3.0},
 	# 방패 약탈자: 화살이 거의 안 통함. 창병으로 상대.
 	"shield_raider": {"name": "방패 약탈자", "hp": 22.0, "damage": 5.0, "reach": 0.25, "cooldown": 1.2, "windup": 0.3,
-		"speed": 1.25, "knock": 0.8, "mass": 1.4, "ranged_taken": 0.2, "aggro": 1.8, "house_damage": 6.0,
+		"speed": 1.25, "knock": 0.8, "mass": 1.4, "ranged_taken": 0.2, "aggro": 0.7, "house_damage": 6.0,
 		"shielded": true},
 	"brute": {"name": "거한", "hp": 80.0, "damage": 13.0, "reach": 0.35, "cooldown": 2.0, "windup": 0.55,
-		"speed": 1.0, "knock": 3.6, "mass": 3.0, "radius": 0.28, "aggro": 1.6, "house_damage": 20.0,
+		"speed": 1.0, "knock": 3.6, "mass": 3.0, "radius": 0.28, "aggro": 0.8, "house_damage": 20.0,
 		"large": true},
 }
 

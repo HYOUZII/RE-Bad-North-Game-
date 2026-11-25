@@ -21,6 +21,7 @@ var marching := false
 var march_t := 0.0
 var regen_t := 0.0
 var speed_mult: float = 1.0
+var path_cells: Array = []  # 행군 경로(점선 표시용)
 var skill_cd := 0.0          # 기술을 다시 쓸 수 있을 때까지 남은 시간
 var item_used := false       # 이번 전투에서 장비(1회용)를 썼는가
 var label: Label3D
@@ -89,8 +90,10 @@ func slot_position(i: int) -> Vector3:
 	return center + Vector3(cos(a) * r, 0.0, sin(a) * r)
 
 
-func order_move(cell: Vector2i) -> void:
+## 이동 명령. path는 화면에 점선으로 그릴 경로(칸 목록).
+func order_move(cell: Vector2i, path: Array = []) -> void:
 	anchor_cell = cell
+	path_cells = path
 	marching = true
 	march_t = 0.0
 	regen_t = 0.0
@@ -120,6 +123,7 @@ func tick(dt: float) -> void:
 				break
 		if arrived or march_t > MARCH_TIMEOUT:
 			marching = false
+			path_cells = []
 
 	# 집에서 회복
 	var house = battle.house_at(anchor_cell)
