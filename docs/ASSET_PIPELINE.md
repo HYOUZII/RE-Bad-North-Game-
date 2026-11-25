@@ -31,6 +31,13 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 | `boat.glb` | 침략자의 배 | 0.7 × 0.25 × 1.6 |
 | `house.glb` | 마을 집 | 0.55 × 0.45 × 0.55 |
 | `tree.glb` | 나무 | 0.35 × 0.7 × 0.35 |
+| `militia.glb` | 민병 (직업 없는 신병) | 0.35 × 0.42 × 0.35 |
+| `raider_archer.glb` | 침략자 궁수 | 0.35 × 0.42 × 0.35 |
+| `brute.glb` | 침략자 거한 (큰 몸집) | 0.6 × 0.7 × 0.6 |
+| `house_burned.glb` | 불탄 집 잔해 | 0.55 × 0.18 × 0.55 |
+| `arrow.glb` | 화살 (앞쪽이 -Z) | 0.03 × 0.03 × 0.35 |
+| `cell_marker.glb` | 선택한 분대 위치 표시판 | 0.92 × 0.03 × 0.92 |
+| `hover_marker.glb` | 마우스가 가리키는 칸 표시판 | 0.8 × 0.02 × 0.8 |
 
 ## 3단계. 3D 변환
 

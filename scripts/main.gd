@@ -1,89 +1,101 @@
 extends Node3D
-## 게임 시작점. 지금(1단계)은 섬 하나를 만들고 카메라로 둘러볼 수 있게만 합니다.
-## - R: 새 섬 생성
-## - 화면 왼쪽 위에 조작법과 AI 연결 상태 표시
+## 게임 시작점. 화면 전환만 담당합니다.
+##
+## 흐름: 타이틀 → 원정 지도 → 섬 전투 → (승리) 원정 지도 → ... → 최종 섬 승리 또는 전멸
+## 각 화면은 따로 만든 스크립트가 맡고, 여기서는 갈아 끼우기만 합니다.
 
-const IslandGenerator := preload("res://scripts/island/island_generator.gd")
-const OrbitCamera := preload("res://scripts/camera/orbit_camera.gd")
+const Battle := preload("res://scripts/battle/battle.gd")
+const CampaignScreen := preload("res://scripts/ui/campaign_screen.gd")
 
-@export var island_seed: int = 0  # 0이면 매번 랜덤
-
-var island: Node3D
-var _label: Label
+var _current: Node
 
 
 func _ready() -> void:
-	_setup_world()
-	island = IslandGenerator.new()
-	island.name = "Island"
-	add_child(island)
-	_new_island()
-
-	var cam := OrbitCamera.new()
-	cam.name = "OrbitCamera"
-	add_child(cam)
-
-	_setup_hud()
+	_show_title()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R:
-		_new_island()
+func _swap(n: Node) -> void:
+	if _current != null:
+		_current.queue_free()
+	_current = n
+	add_child(n)
 
 
-func _new_island() -> void:
-	var s := island_seed if island_seed != 0 else randi()
-	island.generate(s)
-	if _label:
-		_update_hud(s)
+func _show_title() -> void:
+	_swap(_message_screen(
+		"Isle Defense",
+		"작은 섬들을 침략자로부터 지키며 바다 끝 성채까지 나아가세요.\n\n분대를 골라 칸을 클릭하면 이동합니다. 전투는 자동으로 벌어집니다.\n높은 곳은 유리하고, 적을 바다로 밀어내면 즉사합니다.\n보병은 화살을 막고, 궁수는 배를 쏘고, 창병은 거한을 잡습니다.",
+		"새 원정 시작",
+		func():
+			Game.new_run()
+			_show_campaign()))
 
 
-func _setup_world() -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.62, 0.78, 0.86)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.80, 0.90)
-	env.ambient_light_energy = 0.6
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.62, 0.78, 0.86)
-	env.fog_density = 0.01
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(30), 0)
-	sun.light_energy = 1.2
-	sun.shadow_enabled = true
-	add_child(sun)
-
-	# 바다: 섬 아래 넓은 평면
-	var sea := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(200, 200)
-	sea.mesh = plane
-	var sea_mat := StandardMaterial3D.new()
-	sea_mat.albedo_color = Color(0.24, 0.49, 0.65)
-	sea_mat.roughness = 0.3
-	sea.material_override = sea_mat
-	sea.position.y = 0.02
-	sea.name = "Sea"
-	add_child(sea)
+func _show_campaign() -> void:
+	var s := CampaignScreen.new()
+	s.battle_requested.connect(_start_battle)
+	_swap(s)
 
 
-func _setup_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	_label = Label.new()
-	_label.position = Vector2(16, 12)
-	_label.add_theme_color_override("font_color", Color.WHITE)
-	_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
-	_label.add_theme_constant_override("outline_size", 4)
-	layer.add_child(_label)
-	_update_hud(0)
+func _start_battle(node_id: int) -> void:
+	var b := Battle.new()
+	b.setup(Game.map_nodes[node_id], Game.roster)
+	b.battle_ended.connect(_on_battle_ended.bind(node_id))
+	_swap(b)
 
 
-func _update_hud(seed_value: int) -> void:
-	var ai_state := "꺼짐" if not AI.is_enabled() else "%s (%s)" % [AI.provider, AI.model]
-	_label.text = "Isle Defense - 1단계 뼈대\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소   R: 새 섬\n섬 시드: %d   AI: %s" % [seed_value, ai_state]
+func _on_battle_ended(result: Dictionary, node_id: int) -> void:
+	Game.apply_battle_result(node_id, result)
+	if Game.run_over:
+		if Game.run_won:
+			_swap(_message_screen("원정 성공!", "바다 끝 성채를 지켜 냈습니다.\n지킨 섬 %d개, 살아남은 지휘관 %d명" % [Game.islands_cleared, Game.roster.size()], "처음으로", _show_title))
+		else:
+			_swap(_message_screen("원정 실패", "모든 지휘관을 잃었습니다.\n지킨 섬 %d개" % Game.islands_cleared, "처음으로", _show_title))
+	else:
+		_show_campaign()
+
+
+func _message_screen(title: String, body: String, button_text: String, on_press: Callable) -> Control:
+	var root := Control.new()
+	# 부모가 Control이 아니어서 화면 크기를 직접 맞춤
+	root.size = get_viewport().get_visible_rect().size
+	var root_ref: WeakRef = weakref(root)
+	get_viewport().size_changed.connect(func():
+		var r = root_ref.get_ref()
+		if r != null:
+			r.size = get_viewport().get_visible_rect().size)
+	var bg := ColorRect.new()
+	bg.color = Color(0.13, 0.20, 0.27)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 24)
+	center.add_child(vb)
+	var t := Label.new()
+	t.text = title
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 48)
+	vb.add_child(t)
+	var b := Label.new()
+	b.text = body
+	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.add_theme_font_size_override("font_size", 20)
+	vb.add_child(b)
+	var ai_state := "AI: 꺼짐" if not AI.is_enabled() else "AI: %s (%s)" % [AI.provider, AI.model]
+	var a := Label.new()
+	a.text = ai_state
+	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	a.add_theme_font_size_override("font_size", 14)
+	a.modulate = Color(1, 1, 1, 0.6)
+	vb.add_child(a)
+	var btn := Button.new()
+	btn.text = button_text
+	btn.custom_minimum_size = Vector2(260, 56)
+	btn.add_theme_font_size_override("font_size", 24)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	btn.pressed.connect(on_press)
+	vb.add_child(btn)
+	return root
