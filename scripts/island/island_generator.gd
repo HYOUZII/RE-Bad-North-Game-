@@ -3,7 +3,7 @@ extends Node3D
 ##
 ## 정사각형 격자 위에 노이즈로 높이를 정하고, 가장자리로 갈수록 낮춰서 섬 모양을 만듭니다.
 ## tiles 사전: Vector2i(x, z) -> 높이(1 이상의 정수). 높이 0 이하는 바다라서 저장하지 않습니다.
-## 나중에 유닛 이동(길찾기)과 적 상륙 지점 계산이 이 데이터를 씁니다.
+## 유닛 이동(길찾기)과 적 상륙 지점 계산이 이 데이터를 씁니다.
 
 @export var radius: int = 7
 @export var max_height: int = 3
@@ -18,7 +18,7 @@ var tiles: Dictionary = {}
 var house_cells: Array[Vector2i] = []
 
 
-func generate(seed_value: int) -> void:
+func generate(seed_value: int, house_count: int = 3) -> void:
 	for c in get_children():
 		c.queue_free()
 	tiles.clear()
@@ -44,9 +44,42 @@ func generate(seed_value: int) -> void:
 				continue
 			tiles[Vector2i(x, z)] = min(h, max_height)
 
+	_make_reachable()
 	_build_tiles()
-	_place_houses(rng, 3)
-	_place_trees(rng, 6)
+	_place_houses(rng, house_count)
+	_place_trees(rng, 4 + radius / 2)
+
+
+## 모든 땅을 걸어서 갈 수 있게 다듬습니다.
+## 유닛은 높이 1단계 차이까지만 오르내릴 수 있으므로, 중앙에서 못 가는 칸은 낮추고
+## 그래도 못 가는 떨어진 작은 섬은 바다로 만듭니다.
+func _make_reachable() -> void:
+	for _i in range(max_height + 1):
+		var reach := _flood_from(Vector2i.ZERO)
+		var changed := false
+		for cell in tiles.keys():
+			if not reach.has(cell) and tiles[cell] > 1:
+				tiles[cell] -= 1
+				changed = true
+		if not changed:
+			break
+	var reach_final := _flood_from(Vector2i.ZERO)
+	for cell in tiles.keys():
+		if not reach_final.has(cell):
+			tiles.erase(cell)
+
+
+func _flood_from(start: Vector2i) -> Dictionary:
+	var seen := {start: true}
+	var queue: Array[Vector2i] = [start]
+	while not queue.is_empty():
+		var c: Vector2i = queue.pop_back()
+		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + dir
+			if tiles.has(n) and not seen.has(n) and abs(int(tiles[n]) - int(tiles[c])) <= 1:
+				seen[n] = true
+				queue.append(n)
+	return seen
 
 
 ## 격자 좌표 -> 월드 좌표 (타일 윗면 중앙)
@@ -86,19 +119,29 @@ func _build_tiles() -> void:
 		add_child(mi)
 
 
+## 집 위치만 정합니다. 집 모델과 체력은 전투(battle.gd)가 만듭니다.
 func _place_houses(rng: RandomNumberGenerator, count: int) -> void:
-	var candidates: Array = tiles.keys().filter(func(c): return tiles[c] < max_height)
-	candidates.shuffle()
-	for cell in candidates:
-		if house_cells.size() >= count:
-			break
-		if cell in get_shore_cells():
-			continue  # 집은 해안에서 한 칸 이상 안쪽
-		house_cells.append(cell)
-		var house := Assets.get_model("house")
-		house.position = cell_to_world(cell)
-		house.rotation.y = rng.randi_range(0, 3) * PI * 0.5
-		add_child(house)
+	var shore := get_shore_cells()
+	var candidates: Array = tiles.keys().filter(func(c): return tiles[c] < max_height and not (c in shore))
+	# 섞은 뒤, 서로 너무 붙지 않게 고릅니다.
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = tmp
+	for min_gap in [3, 2, 1]:
+		for cell in candidates:
+			if house_cells.size() >= count:
+				return
+			if cell in house_cells:
+				continue
+			var ok := true
+			for hc in house_cells:
+				if abs(hc.x - cell.x) + abs(hc.y - cell.y) < min_gap:
+					ok = false
+					break
+			if ok:
+				house_cells.append(cell)
 
 
 func _place_trees(rng: RandomNumberGenerator, count: int) -> void:
