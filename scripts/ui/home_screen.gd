@@ -16,8 +16,8 @@ const UnitDefs := preload("res://scripts/battle/unit_defs.gd")
 const Catalog := preload("res://scripts/core/catalog.gd")
 const OrbitCamera := preload("res://scripts/camera/orbit_camera.gd")
 
-const GRASS := Color(0.55, 0.78, 0.45)
-const SAND := Color(0.86, 0.78, 0.55)
+const GRASS := Color(0.40, 0.62, 0.32)
+const SAND := Color(0.74, 0.64, 0.42)
 const PICK_RADIUS := 70.0  # 화면에서 건물 중심과 이 픽셀 거리 안을 누르면 그 건물
 
 ## 건물 정의. cls가 있으면 병과 건물. angle = 섬 중심에서 본 방향(도)
@@ -42,9 +42,10 @@ var radius := 4
 var _world: Node3D
 var _bld_pos: Dictionary = {}     # 건물 id -> 위치(Vector3)
 var _bld_labels: Dictionary = {}  # 건물 id -> Label3D
-var _built_for := -1              # 섬을 만들 때의 지휘관 수 (바뀌면 다시 만듦)
+var _built_for := ""              # 섬을 만들 때의 지휘관 목록 요약 (병과·레벨이 바뀌어도 다시 만듦)
 var _open := ""                   # 지금 열린 건물 id ("" = 없음)
 var _hover := ""
+var _first_build := true
 
 # 화면 UI
 var _gold_label: Label
@@ -81,8 +82,9 @@ func _rebuild_world() -> void:
 	add_child(_world)
 	_bld_pos.clear()
 	_bld_labels.clear()
+	var old_radius := radius
 	radius = island_radius(Game.roster.size())
-	_built_for = Game.roster.size()
+	_built_for = _roster_key()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 
@@ -145,8 +147,8 @@ func _rebuild_world() -> void:
 		var nl := Label3D.new()
 		nl.text = "%s Lv%d" % [str(c["name"]), int(c["level"])]
 		nl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		nl.font_size = 36
-		nl.pixel_size = 0.006
+		nl.font_size = 44
+		nl.pixel_size = 0.008
 		nl.outline_size = 10
 		nl.modulate = Color(1, 1, 1, 0.85)
 		nl.position = tent.position + Vector3(0, 0.75, 0)
@@ -162,9 +164,27 @@ func _rebuild_world() -> void:
 			t.position = Vector3(c.x + rng.randf_range(-0.2, 0.2), 0.5, c.y + rng.randf_range(-0.2, 0.2))
 			_world.add_child(t)
 
-	camera_rig.distance = 6.0 + float(radius) * 2.2
-	camera_rig.max_distance = camera_rig.distance + 10.0
+	if old_radius != radius or camera_rig.max_distance <= 0.0 or _first_build:
+		camera_rig.distance = 6.0 + float(radius) * 2.2
+		camera_rig.max_distance = 6.0 + float(radius) * 2.2 + 10.0
+		_first_build = false
 	camera_rig._update_transform()
+	_update_camera_offset()
+
+
+## 지휘관 이름·병과·레벨 요약. 바뀌면 천막과 이름표를 다시 그림
+func _roster_key() -> String:
+	var parts: PackedStringArray = []
+	for c in Game.roster:
+		parts.append("%d:%s:%d" % [int(c["id"]), str(c["cls"]), int(c["level"])])
+	return ",".join(parts)
+
+
+## 오른쪽 건물 창이 열리면 섬이 왼쪽으로 보이게 카메라를 옆으로 밂 (창 뒤 건물도 누를 수 있게)
+func _update_camera_offset() -> void:
+	if camera_rig == null or camera_rig.camera == null:
+		return
+	camera_rig.camera.h_offset = camera_rig.distance * 0.2 if _open != "" else 0.0
 
 
 func _setup_env() -> void:
@@ -230,6 +250,7 @@ func _pick_building(screen_pos: Vector2) -> String:
 func open_building(id: String) -> void:
 	_open = id
 	_update_label_colors()
+	_update_camera_offset()
 	_build_panel()
 
 
@@ -367,7 +388,7 @@ func _wrap(text: String, font_size: int) -> Label:
 func _refresh() -> void:
 	if not is_inside_tree():
 		return
-	if Game.roster.size() != _built_for:
+	if _roster_key() != _built_for:
 		_rebuild_world()
 	var deployed := Game.deployed_commanders().size()
 	_gold_label.text = "골드 %d" % Game.gold

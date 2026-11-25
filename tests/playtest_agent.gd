@@ -46,66 +46,13 @@ func _run() -> void:
 	print("title button: ", b != null)
 	await _click_control(b)
 	await _frames(10)
-	_save("home_start")
-	_dump_buttons("home_start")
-	# 처음엔 골드 0 → 테스트를 위해 골드 지급 (치트)
-	Game.gold = 80
-	Game.changed.emit()
-	await _frames(5)
-	_save("map_gold80")
-	# 기술 배우기: 각 지휘관 카드의 '기술' 버튼 클릭
-	for _k in range(3):
-		var sb := _find_button_prefix(main, "기술 '")
-		if sb == null:
-			break
-		print("click skill btn: ", sb.text, " disabled=", sb.disabled)
-		await _click_control(sb)
-		await _frames(5)
-	_save("map_after_skills")
-	# 상점 아이템 사기
-	for item in Game.shop.duplicate():
-		pass
-	var bought := 0
-	for _k in range(2):
-		var shop_btn := _find_button_prefix(main, "", "G)\n전투마다")
-		if shop_btn == null:
-			break
-		print("click shop: ", shop_btn.text, " disabled=", shop_btn.disabled, " rect=", shop_btn.get_global_rect())
-		await _click_control(shop_btn)
-		await _frames(5)
-	print("inventory after buy: ", Game.inventory, " gold=", Game.gold)
-	_save("map_after_shop")
-	# 장비 달기
-	for _k in range(2):
-		var eb := _find_button_suffix(main, " 달기")
-		if eb == null:
-			break
-		print("click equip: ", eb.text, " rect=", eb.get_global_rect())
-		await _click_control(eb)
-		await _frames(5)
-	print("roster: ", Game.roster)
-	_save("map_after_equip")
-	# 출전 토글 (끄고 다시 켜기)
-	var cbs := _find_all(main, func(n): return n is CheckBox)
-	print("deploy checkboxes: ", cbs.size(), " deployed=", Game.deploy_ids)
-	if cbs.size() > 0:
-		await _click_control(cbs[0])
-		await _frames(3)
-		print("after toggle off: ", Game.deploy_ids)
-		_save("map_deploy_off")
-		cbs = _find_all(main, func(n): return n is CheckBox)
-		await _click_control(cbs[0])
-		await _frames(3)
-		print("after toggle on: ", Game.deploy_ids)
-	_save("home_ready")
-	# 출항 → 지도 → 본 섬으로 → 다시 출항
+	await _home_phase()
 	await _click_control(_find_button(main, "출항 → 원정 지도"))
 	await _frames(10)
 	_save("map_first")
-	_dump_buttons("map_first")
 	await _click_control(_find_button(main, "← 본 섬으로 돌아가 정비"))
 	await _frames(10)
-	print("back home: ", _find_button(main, "출항 → 원정 지도") != null)
+	print("back home: ", _home() != null)
 	_save("home_back")
 	await _click_control(_find_button(main, "출항 → 원정 지도"))
 	await _frames(10)
@@ -371,7 +318,8 @@ func _battle_play() -> void:
 		await _click_control(cont)
 		await _frames(10)
 		_save("after_result")
-		print("after result: home=", _find_button(main, "출항 → 원정 지도") != null)
+		print("after result: home=", _home() != null)
+		_save("home_after_battle")
 		_dump_buttons("after_result")
 
 
@@ -768,3 +716,179 @@ func _rest_lab() -> void:
 	var s2 = bt.squads[1]
 	print("MARCH: attacks so far ", march_attacks)
 	get_tree().quit()
+
+
+
+# ================================================================ 본 섬 (3D)
+func _home():
+	var h = main.get("_current")
+	if h != null and h.get_script() == load("res://scripts/ui/home_screen.gd"):
+		return h
+	return null
+
+
+func _tents(h) -> Array:
+	# 천막 이름표(Label3D, "Lv" 포함) 위치와 글
+	var out := []
+	for n in h._world.get_children():
+		if n is Label3D and "Lv" in n.text:
+			out.append([n.text, Vector2(n.position.x, n.position.z)])
+	return out
+
+
+func _click_building(h, id: String, tag: String) -> bool:
+	var p: Vector2 = h.building_screen_pos(id)
+	var vp := get_viewport().get_visible_rect()
+	var on_screen := vp.has_point(p)
+	await _click(p)
+	await _frames(3)
+	var ok: bool = h._open == id
+	print("  click %s at %s on_screen=%s -> open='%s' %s" % [id, p.round(), on_screen, h._open, "OK" if ok else "FAIL"])
+	if tag != "":
+		_save("home_%s_%s" % [tag, id])
+	return ok
+
+
+func _home_phase() -> void:
+	var h = _home()
+	print("home 3D: ", h != null, " radius ", h.radius, " tents ", _tents(h))
+	_save("home_start")
+	Game.gold = 120
+	Game.changed.emit()
+	await _frames(3)
+	# 1) 닫힌 상태에서 각 건물 클릭
+	print("HOME click each building (closing between):")
+	for id in h.BUILDINGS.keys():
+		await _key(KEY_ESCAPE)
+		await _click_building(h, id, "a")
+	# 2) 창이 열린 상태에서 다른 건물 클릭
+	print("HOME click with panel open:")
+	await _click_building(h, "market", "")
+	for id in h.BUILDINGS.keys():
+		var p: Vector2 = h.building_screen_pos(id)
+		var under_panel: bool = h._panel.get_global_rect().has_point(p)
+		var ok := await _click_building(h, id, "")
+		if not ok:
+			print("    (under panel=", under_panel, ")")
+	# 3) 카메라 회전(우클릭 드래그)·확대 후 클릭
+	print("HOME after rotate/zoom:")
+	await _key(KEY_ESCAPE)
+	await _right_drag(Vector2(640, 360), Vector2(260, 0))
+	for _i in range(3):
+		await _wheel(Vector2(640, 360), true)
+	_save("home_rotated")
+	for id in h.BUILDINGS.keys():
+		await _key(KEY_ESCAPE)
+		await _click_building(h, id, "")
+	for _i in range(6):
+		await _wheel(Vector2(640, 360), false)
+	await _right_drag(Vector2(640, 360), Vector2(-500, 0))
+	_save("home_rotated2")
+	for id in h.BUILDINGS.keys():
+		await _key(KEY_ESCAPE)
+		await _click_building(h, id, "")
+	# 4) 시장에서 사기 → 병영에서 달기
+	await _key(KEY_ESCAPE)
+	await _click_building(h, "market", "")
+	for _k in range(2):
+		var mb := _find_button_prefix(main, "", "G)\n")
+		if mb == null:
+			break
+		await _click_control(mb)
+		await _frames(3)
+	print("MARKET: inventory ", Game.inventory, " gold ", Game.gold)
+	_save("home_market_bought")
+	for id in ["barracks", "archery", "pikehall"]:
+		await _click_building(h, id, "")
+		var sk := _find_button_prefix(main, "기술 배우기")
+		if sk:
+			await _click_control(sk)
+			await _frames(3)
+		var eq := _find_button_suffix(main, " 달기")
+		if eq:
+			print("  equip click: ", eq.text)
+			await _click_control(eq)
+			await _frames(3)
+		_save("home_card_%s" % id)
+	print("EQUIP: roster ", Game.roster.map(func(c): return [c["name"], c["cls"], c["skill"], c["item"]]), " inv ", Game.inventory)
+	# 5) 훈련 (레벨업) → 천막 이름표 Lv 갱신?
+	await _click_building(h, "barracks", "")
+	var tr := _find_button_prefix(main, "훈련")
+	var tents_before := _tents(h)
+	if tr:
+		await _click_control(tr)
+		await _frames(3)
+	print("TRAIN: roster lvls ", Game.roster.map(func(c): return c["level"]), " tents before ", tents_before, " after ", _tents(h))
+	# 6) 모집소 고용 → 섬 커짐, 천막 추가
+	await _click_building(h, "recruit", "")
+	var r_before: int = h.radius
+	var t_before := _tents(h).size()
+	var rb := _find_button_prefix(main, "지휘관 고용")
+	await _click_control(rb)
+	await _frames(5)
+	print("RECRUIT: roster ", Game.roster.size(), " radius ", r_before, "->", h.radius, " tents ", t_before, "->", _tents(h).size(), " open='", h._open, "'")
+	_save("home_after_recruit")
+	# 7) 민병 승급 (궁술장) → 천막이 궁술장 옆으로?
+	var arch_pos: Vector3 = h._bld_pos["archery"]
+	await _click_building(h, "archery", "")
+	var pb := _find_button_suffix(main, "(으)로 승급")
+	var tents_b := _tents(h)
+	if pb:
+		await _click_control(pb)
+		await _frames(5)
+	var tents_a := _tents(h)
+	print("PROMOTE: classes ", Game.roster.map(func(c): return c["cls"]), " archery at ", Vector2(arch_pos.x, arch_pos.z))
+	print("  tents before ", tents_b)
+	print("  tents after  ", tents_a)
+	_save("home_after_promote")
+	# 8) 지휘관 목록 이름 버튼 → 그 병과 건물
+	var names := _find_all(main, func(n): return n is Button and n.flat and "병사" in n.text)
+	for nb in names:
+		await _click_control(nb)
+		await _frames(2)
+		print("  roster btn '", nb.text, "' -> open ", h._open)
+	# 출전 체크 끄기/켜기
+	var cbs := _find_all(main, func(n): return n is CheckBox and n.is_visible_in_tree())
+	print("deploy before ", Game.deploy_ids, " checkboxes ", cbs.size())
+	await _click_control(cbs[0])
+	await _frames(2)
+	print("deploy after toggle ", Game.deploy_ids)
+	cbs = _find_all(main, func(n): return n is CheckBox and n.is_visible_in_tree())
+	await _click_control(cbs[0])
+	await _frames(2)
+	print("deploy after toggle2 ", Game.deploy_ids)
+	await _click_building(h, "harbor", "z")
+	_save("home_ready")
+	_dump_buttons("home_ready")
+
+
+func _right_drag(from: Vector2, rel: Vector2) -> void:
+	var e := InputEventMouseButton.new()
+	e.button_index = MOUSE_BUTTON_RIGHT
+	e.pressed = true
+	e.position = from
+	Input.parse_input_event(e)
+	await _frames(1)
+	for i in range(10):
+		var m := InputEventMouseMotion.new()
+		m.position = from + rel * float(i + 1) / 10.0
+		m.relative = rel / 10.0
+		m.button_mask = MOUSE_BUTTON_MASK_RIGHT
+		Input.parse_input_event(m)
+		await _frames(1)
+	var e2 := InputEventMouseButton.new()
+	e2.button_index = MOUSE_BUTTON_RIGHT
+	e2.pressed = false
+	e2.position = from + rel
+	Input.parse_input_event(e2)
+	await _frames(2)
+
+
+func _wheel(at: Vector2, up: bool) -> void:
+	for pressed in [true, false]:
+		var w := InputEventMouseButton.new()
+		w.button_index = MOUSE_BUTTON_WHEEL_UP if up else MOUSE_BUTTON_WHEEL_DOWN
+		w.pressed = pressed
+		w.position = at
+		Input.parse_input_event(w)
+	await _frames(2)
