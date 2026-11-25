@@ -46,6 +46,13 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 | `path_dot.glb` | 행군 경로 점선의 점(흰색) | 0.09 × 0.02 × 0.09 |
 | `path_dot_preview.glb` | 이동 미리보기 점선의 점(하늘색) | 0.12 × 0.03 × 0.12 |
 | `buff_ring.glb` | 기술 사용 중인 병사 발밑 표시 | 지름 0.44 × 0.03 |
+| `bld_barracks.glb` | 본 섬 병영(보병 건물) | 1.2 × 0.8 × 0.9 |
+| `bld_archery.glb` | 본 섬 궁술장(궁수 건물) | 1.2 × 0.6 × 0.9 |
+| `bld_pikehall.glb` | 본 섬 창술장(창병 건물) | 1.1 × 0.9 × 0.9 |
+| `bld_market.glb` | 본 섬 시장(장비 상점) | 1.0 × 0.55 × 1.0 |
+| `bld_recruit.glb` | 본 섬 모집소(지휘관 고용) | 지름 1.0 × 0.9 |
+| `bld_harbor.glb` | 본 섬 항구(출항, 바다 쪽으로 길게) | 0.8 × 0.2 × 1.8 |
+| `tent.glb` | 본 섬 지휘관 천막(지휘관마다 하나) | 지름 0.64 × 0.5 |
 
 ## 3단계. 3D 변환
 

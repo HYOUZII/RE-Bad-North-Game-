@@ -34,6 +34,14 @@ const PLACEHOLDERS := {
 	"path_dot":      {"shape": "box",      "size": Vector3(0.09, 0.02, 0.09), "color": Color(1.00, 1.00, 1.00)},
 	"path_dot_preview": {"shape": "box",   "size": Vector3(0.12, 0.03, 0.12), "color": Color(0.35, 0.90, 1.00)},
 	"buff_ring":     {"shape": "cylinder", "size": Vector3(0.22, 0.03, 0.22), "color": Color(1.00, 0.95, 0.40)},
+	# 본 섬 건물 (정면 = -Z 가 섬 중심 쪽)
+	"bld_barracks":  {"shape": "box",      "size": Vector3(1.20, 0.80, 0.90), "color": Color(0.35, 0.50, 0.80)},
+	"bld_archery":   {"shape": "box",      "size": Vector3(1.20, 0.60, 0.90), "color": Color(0.35, 0.70, 0.45)},
+	"bld_pikehall":  {"shape": "box",      "size": Vector3(1.10, 0.90, 0.90), "color": Color(0.85, 0.78, 0.35)},
+	"bld_market":    {"shape": "box",      "size": Vector3(1.00, 0.55, 1.00), "color": Color(0.90, 0.55, 0.30)},
+	"bld_recruit":   {"shape": "cylinder", "size": Vector3(0.50, 0.90, 0.50), "color": Color(0.75, 0.72, 0.68)},
+	"bld_harbor":    {"shape": "box",      "size": Vector3(0.80, 0.20, 1.80), "color": Color(0.50, 0.36, 0.24)},
+	"tent":          {"shape": "cone",     "size": Vector3(0.32, 0.50, 0.32), "color": Color(0.92, 0.88, 0.75)},
 }
 
 var _material_cache: Dictionary = {}
