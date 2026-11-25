@@ -36,7 +36,7 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 | `brute.glb` | 침략자 거한 (큰 몸집) | 0.6 × 0.7 × 0.6 |
 | `house_burned.glb` | 불탄 집 잔해 | 0.55 × 0.18 × 0.55 |
 | `arrow.glb` | 화살 (앞쪽이 -Z) | 0.03 × 0.03 × 0.35 |
-| `cell_marker.glb` | 선택한 분대 위치 표시판 | 0.92 × 0.03 × 0.92 |
+| `cell_marker.glb` | 선택한 분대 위치 표시판(하늘색) | 0.92 × 0.03 × 0.92 |
 | `hover_marker.glb` | 마우스가 가리키는 칸 표시판 | 0.8 × 0.02 × 0.8 |
 | `shield_raider.glb` | 방패 든 침략자 | 0.42 × 0.45 × 0.42 |
 | `blast.glb` | 폭발 효과 (잠깐 보였다 사라짐) | 지름 2.8 × 0.1 |
@@ -44,7 +44,7 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 | `rock.glb` | 길을 막는 바위 | 0.75 × 0.55 × 0.75 |
 | `hover_marker_bad.glb` | 갈 수 없는 칸 표시판(빨강) | 0.8 × 0.02 × 0.8 |
 | `path_dot.glb` | 행군 경로 점선의 점(흰색) | 0.09 × 0.02 × 0.09 |
-| `path_dot_preview.glb` | 이동 미리보기 점선의 점(노랑) | 0.09 × 0.02 × 0.09 |
+| `path_dot_preview.glb` | 이동 미리보기 점선의 점(하늘색) | 0.12 × 0.03 × 0.12 |
 | `buff_ring.glb` | 기술 사용 중인 병사 발밑 표시 | 지름 0.44 × 0.03 |
 
 ## 3단계. 3D 변환

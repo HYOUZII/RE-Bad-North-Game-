@@ -24,7 +24,7 @@ const PLACEHOLDERS := {
 	"brute":         {"shape": "capsule",  "size": Vector3(0.30, 0.70, 0.30), "color": Color(0.50, 0.12, 0.12)},
 	"house_burned":  {"shape": "box",      "size": Vector3(0.55, 0.18, 0.55), "color": Color(0.20, 0.17, 0.15)},
 	"arrow":         {"shape": "box",      "size": Vector3(0.03, 0.03, 0.35), "color": Color(0.95, 0.92, 0.80)},
-	"cell_marker":   {"shape": "box",      "size": Vector3(0.92, 0.03, 0.92), "color": Color(1.00, 0.85, 0.20)},
+	"cell_marker":   {"shape": "box",      "size": Vector3(0.92, 0.03, 0.92), "color": Color(0.35, 0.90, 1.00)},
 	"hover_marker":  {"shape": "box",      "size": Vector3(0.80, 0.02, 0.80), "color": Color(1.00, 1.00, 1.00)},
 	"shield_raider": {"shape": "capsule",  "size": Vector3(0.21, 0.45, 0.21), "color": Color(0.55, 0.35, 0.30)},
 	"blast":         {"shape": "cylinder", "size": Vector3(1.40, 0.10, 1.40), "color": Color(1.00, 0.55, 0.15)},
@@ -32,7 +32,7 @@ const PLACEHOLDERS := {
 	"rock":          {"shape": "box",      "size": Vector3(0.75, 0.55, 0.75), "color": Color(0.50, 0.50, 0.53)},
 	"hover_marker_bad": {"shape": "box",   "size": Vector3(0.80, 0.02, 0.80), "color": Color(0.95, 0.25, 0.20)},
 	"path_dot":      {"shape": "box",      "size": Vector3(0.09, 0.02, 0.09), "color": Color(1.00, 1.00, 1.00)},
-	"path_dot_preview": {"shape": "box",   "size": Vector3(0.09, 0.02, 0.09), "color": Color(1.00, 0.85, 0.20)},
+	"path_dot_preview": {"shape": "box",   "size": Vector3(0.12, 0.03, 0.12), "color": Color(0.35, 0.90, 1.00)},
 	"buff_ring":     {"shape": "cylinder", "size": Vector3(0.22, 0.03, 0.22), "color": Color(1.00, 0.95, 0.40)},
 }
 
