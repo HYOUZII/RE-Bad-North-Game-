@@ -1109,6 +1109,12 @@ func _process(_delta: float) -> void:
 		if s.label.visible:
 			s.label.position = s.centroid() + Vector3(0, 1.15, 0)  # 집 골드 라벨보다 위
 			s.label.modulate = SELECT_COLOR if s == selected else Color(1, 1, 1)
+			# 집 안에서 회복 중이면 숫자 옆에 진행도 표시
+			if s.resting:
+				s.label.text = "%d 회복 %d/%d" % [s.index + 1, s.units.size(), s.max_soldiers]
+				s.label.modulate = Color(0.6, 1.0, 0.6) if s != selected else SELECT_COLOR
+			else:
+				s.label.text = str(s.index + 1)
 	if selected != null and not selected.is_wiped():
 		_sel_marker.visible = true
 		_sel_marker.position = cell_center(selected.anchor_cell) + Vector3(0, 0.01, 0)

@@ -32,6 +32,9 @@ func _ready() -> void:
 	# 부모가 Control이 아니어서 화면 크기를 직접 맞춤
 	get_viewport().size_changed.connect(_fit_to_screen)
 	_fit_to_screen()
+	# 못 누르는(회색) 버튼 글씨도 읽히게
+	theme = Theme.new()
+	theme.set_color("font_disabled_color", "Button", Color(0.72, 0.72, 0.72))
 	var bg := ColorRect.new()
 	bg.color = Color(0.16, 0.22, 0.18)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)

@@ -9,7 +9,7 @@ extends RefCounted
 ##   도중에 이동 명령을 내리면 바로 나오고, 집이 불타면 쫓겨나옵니다.
 
 const REST_PER_SOLDIER := 5.0  # 집 안에서 병사 1명이 돌아오는 시간(초). 남은 병사 체력도 이 시간에 다 참
-const MARCH_TIMEOUT := 8.0     # 이 시간 동안 싸우지 않고 걸었는데도 도착 못 하면 행군 종료
+const MARCH_TIMEOUT := 8.0     # 최소 행군 시간 한도. 먼 길이면 길이에 맞춰 늘어남(order_move)
 
 var battle
 var commander: Dictionary    # Game.roster 항목 {id, name, cls, level}
@@ -21,6 +21,7 @@ var dmg_mult: float = 1.0
 var anchor_cell := Vector2i.ZERO
 var marching := false
 var march_t := 0.0
+var march_limit := MARCH_TIMEOUT  # 이 시간 동안 싸우지 않고 걸었는데도 도착 못 하면 행군 종료
 var resting := false        # 집 안에서 회복 중
 var rest_t := 0.0
 var engaged := false        # 행군 중 적과 맞붙어 있는가 (병사가 매 단계 알려 줌)
@@ -96,12 +97,15 @@ func slot_position(i: int) -> Vector3:
 
 ## 이동 명령. path는 화면에 점선으로 그릴 경로(칸 목록).
 func order_move(cell: Vector2i, path: Array = []) -> void:
+	if resting:
+		_exit_rest()  # 칸을 바꾸기 전에 먼저 지금 집 둘레로 나옴 (순간이동 방지)
 	anchor_cell = cell
 	path_cells = path
 	marching = true
 	march_t = 0.0
-	if resting:
-		_exit_rest()
+	# 길이 길수록 시간 한도도 늘림 (칸 1개 ≈ 1m, 넉넉하게 2배)
+	var spd: float = 1.4 * speed_mult
+	march_limit = max(MARCH_TIMEOUT, float(path.size()) / spd * 2.0 + 3.0)
 
 
 func tick(dt: float) -> void:
@@ -125,18 +129,19 @@ func tick(dt: float) -> void:
 		if not engaged:
 			march_t += dt  # 싸우는 동안은 행군 시간에 안 셈
 		engaged = false
-		# 모두 기준 칸 안(중심에서 0.6m 이내)에 들어오면 도착. 다른 분대와 겹쳐 자리가 좁아도 멈추게.
+		# 모두 기준 칸 안(중심에서 0.6m, 집 칸은 집 둘레에 서므로 0.85m 이내)에 들어오면 도착
 		var arrived := true
 		var center := anchor_pos()
+		var arrive_r := 0.85 if battle.house_at(anchor_cell) != null else 0.6
 		for u in units:
-			if u.state == u.State.ACTIVE and Vector2(u.position.x - center.x, u.position.z - center.z).length() > 0.6:
+			if u.state == u.State.ACTIVE and Vector2(u.position.x - center.x, u.position.z - center.z).length() > arrive_r:
 				arrived = false
 				break
-		if arrived or march_t > MARCH_TIMEOUT:
+		if arrived or march_t > march_limit:
 			marching = false
 			path_cells = []
-			# 다친 분대가 집에 도착하면 들어가서 회복
-			if arrived and needs_rest():
+			# 다친 분대가 집 칸에 오면 들어가서 회복
+			if needs_rest():
 				try_rest()
 
 
