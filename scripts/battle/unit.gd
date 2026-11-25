@@ -45,6 +45,8 @@ var _path_goal := Vector2i(1 << 20, 1 << 20)
 var _path_age := 0.0
 var _fall_t := 0.0
 var _idle_t := 0.0
+var _house = null        # 적: 노리는 집
+var _house_t := 0.0      # 적: 집을 다시 고를 때까지 남은 시간
 var _last_pos := Vector3.ZERO
 var _model: Node3D
 var _ring: Node3D
@@ -207,8 +209,12 @@ func _think_enemy(dt: float) -> void:
 		if not is_ranged() or d > battle.effective_range(self, _target):
 			_move_toward(_target.position, dt, 0.0)
 		return
-	# 주변에 아군이 없으면 가장 가까운 집을 공격하러 감
-	var house = battle.nearest_intact_house(position)
+	# 길을 막는 아군이 없으면 걸어서 가장 가까운 집을 공격하러 감
+	_house_t -= dt
+	if _house == null or not is_instance_valid(_house) or not _house.intact or _house_t <= 0.0:
+		_house = battle.nearest_house_by_path(position)
+		_house_t = 3.0
+	var house = _house
 	if house != null:
 		var hd := _flat_dist(house.position)
 		if hd <= 0.6 + radius():
