@@ -15,6 +15,7 @@ signal sail_requested
 const UnitDefs := preload("res://scripts/battle/unit_defs.gd")
 const Catalog := preload("res://scripts/core/catalog.gd")
 const OrbitCamera := preload("res://scripts/camera/orbit_camera.gd")
+const TerrainBuilder := preload("res://scripts/island/terrain_builder.gd")
 
 const GRASS := Color(0.40, 0.62, 0.32)
 const SAND := Color(0.74, 0.64, 0.42)
@@ -89,19 +90,19 @@ func _rebuild_world() -> void:
 	rng.seed = 4242
 
 	# 타일: 둥근 섬, 가장자리는 모래
+	# 높이는 모두 1단(0.5m). 지형 조각 .glb가 있으면 그것으로, 없으면 상자로 그림
 	var cells: Array = []
+	var tiles := {}
+	var colors := {}
 	for x in range(-radius, radius + 1):
 		for z in range(-radius, radius + 1):
 			var d := Vector2(x, z).length()
 			if d <= float(radius) + 0.3:
-				cells.append(Vector2i(x, z))
-				var mi := MeshInstance3D.new()
-				var mesh := BoxMesh.new()
-				mesh.size = Vector3(1.0, 0.5, 1.0)
-				mi.mesh = mesh
-				mi.material_override = Assets.get_color_material(SAND if d > float(radius) - 0.9 else GRASS)
-				mi.position = Vector3(x, 0.25, z)
-				_world.add_child(mi)
+				var c := Vector2i(x, z)
+				cells.append(c)
+				tiles[c] = 1
+				colors[c] = SAND if d > float(radius) - 0.9 else GRASS
+	TerrainBuilder.build(_world, tiles, 0.5, {}, colors)
 
 	# 건물: 섬 중심 둘레에 놓음 (항구는 바닷가)
 	var used := {}
