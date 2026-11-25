@@ -8,6 +8,17 @@ var shot_i := 0
 var battle = null
 var boat_land_violations := 0
 var boat_checks := 0
+var march_attacks := 0
+var rest_events: Array = []
+
+
+func bt_hooks(bt) -> void:
+	bt.unit_attack_started.connect(func(u, _t):
+		if u.team == 0 and u.squad != null and u.squad.marching:
+			march_attacks += 1)
+	bt.squad_rest_changed.connect(func(sq, r):
+		var h = bt.house_at(sq.anchor_cell)
+		rest_events.append("t%.0f sq%d %s house_intact=%s n=%d/%d" % [bt.elapsed, sq.index, "IN" if r else "OUT", h.intact if h else null, sq.units.size(), sq.max_soldiers]))
 
 
 func _ready() -> void:
@@ -16,6 +27,9 @@ func _ready() -> void:
 			out_dir = a.substr(6)
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	seed(4242)
+	if "--mode=rest" in OS.get_cmdline_user_args():
+		_rest_lab.call_deferred()
+		return
 	if "--mode=skills" in OS.get_cmdline_user_args():
 		_skill_lab.call_deferred()
 		return
@@ -32,8 +46,8 @@ func _run() -> void:
 	print("title button: ", b != null)
 	await _click_control(b)
 	await _frames(10)
-	_save("map_start")
-	_dump_buttons("map_start")
+	_save("home_start")
+	_dump_buttons("home_start")
 	# 처음엔 골드 0 → 테스트를 위해 골드 지급 (치트)
 	Game.gold = 80
 	Game.changed.emit()
@@ -53,7 +67,7 @@ func _run() -> void:
 		pass
 	var bought := 0
 	for _k in range(2):
-		var shop_btn := _find_button_prefix(main, "", "G): 전투마다")
+		var shop_btn := _find_button_prefix(main, "", "G)\n전투마다")
 		if shop_btn == null:
 			break
 		print("click shop: ", shop_btn.text, " disabled=", shop_btn.disabled, " rect=", shop_btn.get_global_rect())
@@ -83,6 +97,18 @@ func _run() -> void:
 		await _click_control(cbs[0])
 		await _frames(3)
 		print("after toggle on: ", Game.deploy_ids)
+	_save("home_ready")
+	# 출항 → 지도 → 본 섬으로 → 다시 출항
+	await _click_control(_find_button(main, "출항 → 원정 지도"))
+	await _frames(10)
+	_save("map_first")
+	_dump_buttons("map_first")
+	await _click_control(_find_button(main, "← 본 섬으로 돌아가 정비"))
+	await _frames(10)
+	print("back home: ", _find_button(main, "출항 → 원정 지도") != null)
+	_save("home_back")
+	await _click_control(_find_button(main, "출항 → 원정 지도"))
+	await _frames(10)
 	# 공격 섬 선택
 	var reach := Game.reachable_nodes()
 	print("reachable: ", reach)
@@ -96,7 +122,9 @@ func _run() -> void:
 	if battle == null:
 		get_tree().quit()
 		return
+	bt_hooks(battle)
 	await _battle_play()
+	print("MARCH-ATTACKS (attack started by unit whose squad is marching): ", march_attacks, "  rest events: ", rest_events)
 	get_tree().quit()
 
 
@@ -343,6 +371,7 @@ func _battle_play() -> void:
 		await _click_control(cont)
 		await _frames(10)
 		_save("after_result")
+		print("after result: home=", _find_button(main, "출항 → 원정 지도") != null)
 		_dump_buttons("after_result")
 
 
@@ -617,4 +646,125 @@ func _skill_lab() -> void:
 			print("LAB %s trial %d: beach %s squad at %s -> skill_hits=%d fell_to_sea=%d alive=%d/3" % [cls, trial, pick[0], pick[1], bt.skill_hits - hits0, fell, alive])
 			bt.queue_free()
 			await _frames(3)
+	get_tree().quit()
+
+
+# ================================================================ 집 회복 실험실
+func _rest_lab() -> void:
+	Game.new_run(4242)
+	for c in Game.roster:
+		c["skill"] = true
+	Game.roster[0]["item"] = "bomb"
+	var B = load("res://scripts/battle/battle.gd")
+	var bt = B.new()
+	var node: Dictionary = Game.map_nodes[0].duplicate()
+	bt.setup(node, [Game.roster[0], Game.roster[2]])
+	add_child(bt)
+	battle = bt
+	bt_hooks(bt)
+	bt.wave_timer = 9999.0
+	await _frames(3)
+	var s = bt.squads[0]
+	var home_h = bt.house_at(s.anchor_cell)
+	# 1) 다친 분대를 다른 집으로 보냄 (클릭)
+	bt.kill_unit(s.units[0], "melee")
+	bt.kill_unit(s.units[1], "melee")
+	await _frames(2)
+	var target_h = null
+	for h in bt.houses:
+		if h.cell != s.anchor_cell and not bt.cell_taken(h.cell, s) and not bt.order_path(s, h.cell).is_empty():
+			if target_h == null or bt.order_path(s, h.cell).size() < bt.order_path(s, target_h.cell).size():
+				target_h = h
+	await _key(KEY_1)
+	await _click(_screen_of(bt.cell_center(target_h.cell) + Vector3(0, 0.3, 0)))
+	print("REST: ordered to house ", target_h.cell, " anchor ", s.anchor_cell, " n=", s.units.size(), "/", s.max_soldiers)
+	var t0: float = bt.elapsed
+	var dbg_t := 0.0
+	while not s.resting and bt.elapsed - t0 < 20.0:
+		if bt.elapsed - t0 > dbg_t:
+			dbg_t += 1.0
+			var c: Vector3 = s.anchor_pos()
+			print("  t+%.0f marching=%s march_t=%.1f dists=%s" % [bt.elapsed - t0, s.marching, s.march_t, str(s.units.map(func(u): return snappedf(Vector2(u.position.x - c.x, u.position.z - c.z).length(), 0.01)))])
+		await get_tree().process_frame
+	if not s.resting:
+		print("REST: not resting after arrival/timeout -> press R")
+		await _key(KEY_1)
+		await _key(KEY_R)
+		await _frames(2)
+		print("REST: after R resting=", s.resting, " toast='", bt._toast_label.text, "'")
+	print("REST: resting=", s.resting, " after ", snappedf(bt.elapsed - t0, 0.1), "s, units visible=", s.units.filter(func(u): return u.visible).size(), " state=", s.units.map(func(u): return u.state))
+	await _frames(30)
+	_save("rest_inside")
+	# F / G 거부
+	await _key(KEY_1)
+	await _frames(1)
+	var cd0: float = s.skill_cd
+	await _key(KEY_F)
+	await _key(KEY_G)
+	await _frames(2)
+	print("REST: F/G while resting -> skill_cd ", cd0, "->", s.skill_cd, " item_used=", s.item_used, " skill_btn='", bt._skill_btn.text, "' item_btn='", bt._item_btn.text, "'")
+	_save("rest_fg_refused")
+	print("REST HUD: ", bt._hud_squads.text.split("\n")[0])
+	# 2) 6초 기다리면 1명 회복?
+	var n0: int = s.units.size()
+	await _key(KEY_ESCAPE)
+	t0 = bt.elapsed
+	while bt.elapsed - t0 < 5.6:
+		await get_tree().process_frame
+	print("REST: after 5.6s units ", n0, " -> ", s.units.size(), " resting=", s.resting, " HUD: ", bt._hud_squads.text.split("\n")[0])
+	# 3) 이동 명령 → 즉시 나옴
+	var out_cell = null
+	for d in [Vector2i(3,0),Vector2i(-3,0),Vector2i(0,3),Vector2i(0,-3),Vector2i(2,2),Vector2i(-2,-2)]:
+		if not bt.order_path(s, s.anchor_cell + d).is_empty():
+			out_cell = s.anchor_cell + d
+			break
+	var house_pos: Vector3 = target_h.position
+	await _key(KEY_1)
+	await _click(_screen_of(bt.cell_center(out_cell)))
+	await _frames(2)
+	print("REST: move to ", out_cell, " (path ", bt.order_path(s, out_cell).size() if false else 0, ") centroid dist from house right after order=", snappedf(bt._flat_dist(s.centroid(), house_pos), 0.01), " from dest=", snappedf(bt._flat_dist(s.centroid(), bt.cell_center(out_cell)), 0.01))
+	print("REST: move order while resting -> resting=", s.resting, " visible=", s.units.filter(func(u): return u.visible).size(), "/", s.units.size(), " marching=", s.marching)
+	_save("rest_exit_by_move")
+	# 4) 다시 집 칸으로 돌아와 R 키 (병사가 아직 모자라면 자동으로 들어갈 수도 있음)
+	t0 = bt.elapsed
+	while s.marching and bt.elapsed - t0 < 8.0:
+		await get_tree().process_frame
+	await _key(KEY_1)
+	await _click(_screen_of(bt.cell_center(target_h.cell) + Vector3(0, 0.3, 0)))
+	t0 = bt.elapsed
+	while s.marching and bt.elapsed - t0 < 10.0:
+		await get_tree().process_frame
+	await _frames(2)
+	print("REST: back on house, auto resting=", s.resting)
+	if not s.resting:
+		await _key(KEY_1)
+		await _key(KEY_R)
+		await _frames(2)
+		print("REST: after R resting=", s.resting)
+	# 5) 적이 집을 태우면 쫓겨나는가: 집 옆에 적 거한/약탈자 배치
+	var ecell = null
+	for d in [Vector2i(1,0),Vector2i(-1,0),Vector2i(0,1),Vector2i(0,-1)]:
+		if bt.nav.can_step(target_h.cell, target_h.cell + d):
+			ecell = target_h.cell + d
+			break
+	var es := []
+	for k in range(4):
+		es.append(bt.spawn_unit("raider", 1, bt.cell_center(ecell), 1.0, 3.0))
+	t0 = bt.elapsed
+	var shot := false
+	while target_h.intact and bt.elapsed - t0 < 60.0:
+		if not shot and bt.elapsed - t0 > 3.0:
+			shot = true
+			_save("rest_house_attacked")
+			print("REST: while attacked resting=", s.resting, " house hp ", target_h.hp, " enemies targeting squad? enemy targets=", es.filter(func(e): return is_instance_valid(e)).map(func(e): return e._target != null))
+		await get_tree().process_frame
+	await _frames(3)
+	print("REST: house burned=", not target_h.intact, " squad resting=", s.resting, " visible=", s.units.filter(func(u): return u.visible).size(), "/", s.units.size(), " states=", s.units.map(func(u): return u.state))
+	_save("rest_kicked_out")
+	await _frames(60)
+	print("REST: 1s later squad alive ", s.units.size(), " enemies ", bt.enemy_count())
+	print("rest events: ", rest_events)
+	# 6) 행군 중 조우: 2번째 분대를 적 무리 사이로 지나가게
+	var s2 = bt.squads[1]
+	print("MARCH: attacks so far ", march_attacks)
 	get_tree().quit()

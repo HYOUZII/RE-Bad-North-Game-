@@ -18,6 +18,7 @@ signal house_burned(house)
 signal boat_landed(boat)
 signal wave_started(index: int, total: int)
 signal squad_selected(squad)
+signal squad_rest_changed(squad, resting: bool)  # 분대가 집에 들어감(true)/나옴(false)
 signal squad_reinforced(squad)
 signal skill_used(squad, skill_id: String)
 signal item_used(squad, item_id: String)
@@ -570,6 +571,20 @@ func nearest_player_unit(pos: Vector3):
 	return best
 
 
+## 행군 중인 병사 u의 몸에 닿을 만큼 가까운 적 (없으면 null)
+func contact_enemy(u):
+	var best = null
+	var best_gap := float(u.def["reach"]) + 0.1
+	for e in units:
+		if e.team != 1 or e.state != e.State.ACTIVE:
+			continue
+		var gap: float = _flat_dist(u.position, e.position) - u.radius() - e.radius()
+		if gap <= best_gap and can_melee(u.position, e.position):
+			best_gap = gap
+			best = e
+	return best
+
+
 func enemy_near(pos: Vector3, r: float) -> bool:
 	for e in units:
 		if e.team == 1 and e.state == e.State.ACTIVE and _flat_dist(pos, e.position) <= r:
@@ -706,6 +721,8 @@ func explode(pos: Vector3, team: int, dmg: float, radius: float, knock: float) -
 func skill_block_reason(s) -> String:
 	if s == null or s.is_wiped() or not s.has_skill():
 		return "기술 없음"
+	if s.resting:
+		return "집에서 회복 중"
 	if not s.skill_ready():
 		return "%d초" % int(ceil(s.skill_cd))
 	var sk: Dictionary = Catalog.SKILLS[s.type_id()]
@@ -843,6 +860,8 @@ func item_block_reason(s) -> String:
 		return "쓰는 장비 없음"
 	if s.item_used:
 		return "이번 전투에 이미 사용함"
+	if s.resting:
+		return "집에서 회복 중"
 	match item:
 		"bomb":
 			if _bomb_target(s) == null:
@@ -997,10 +1016,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			use_skill(selected)
 		elif key == KEY_G:
 			use_item(selected)
+		elif key == KEY_R:
+			rest_squad(selected)
 		elif key == KEY_SPACE:
 			paused = not paused
 		elif key == KEY_ESCAPE:
 			_select(null)
+
+
+## R 키: 집 칸에 선 분대를 집 안으로 들여보내 회복
+func rest_squad(s) -> bool:
+	if s == null or s.is_wiped():
+		return false
+	if s.try_rest():
+		return true
+	if not auto_play:
+		var h = house_at(s.anchor_cell)
+		if s.marching:
+			_toast("회복할 수 없음: 이동 중")
+		elif h == null or not h.intact:
+			_toast("회복할 수 없음: 멀쩡한 집 칸에 있어야 함")
+		else:
+			_toast("회복할 수 없음: 다친 병사가 없음")
+	return false
 
 
 func _select(s) -> void:
@@ -1071,6 +1109,12 @@ func _process(_delta: float) -> void:
 		if s.label.visible:
 			s.label.position = s.centroid() + Vector3(0, 1.15, 0)  # 집 골드 라벨보다 위
 			s.label.modulate = SELECT_COLOR if s == selected else Color(1, 1, 1)
+			# 집 안에서 회복 중이면 숫자 옆에 진행도 표시
+			if s.resting:
+				s.label.text = "%d 회복 %d/%d" % [s.index + 1, s.units.size(), s.max_soldiers]
+				s.label.modulate = Color(0.6, 1.0, 0.6) if s != selected else SELECT_COLOR
+			else:
+				s.label.text = str(s.index + 1)
 	if selected != null and not selected.is_wiped():
 		_sel_marker.visible = true
 		_sel_marker.position = cell_center(selected.anchor_cell) + Vector3(0, 0.01, 0)
@@ -1200,7 +1244,7 @@ func _setup_hud() -> void:
 	_hud_help.offset_right = -16
 	_hud_help.offset_top = 12
 	_hud_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동\n다른 분대로 바꾸기: 그 분대 숫자 클릭\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n분대를 집 칸에 세우면 병사가 회복됩니다"
+	_hud_help.text = "분대(숫자) 좌클릭 → 칸 좌클릭: 이동\n다른 분대로 바꾸기: 그 분대 숫자 클릭\n숫자키 1~9: 분대 선택   Space: 일시정지\nF: 기술   G: 장비(전투마다 1번)   R: 집에서 회복\n우클릭 드래그 / Q,E: 회전   휠: 확대·축소\n다친 분대를 집 칸으로 보내면 집 안에서 회복(그동안 못 싸움)"
 	layer.add_child(_hud_help)
 
 	# 잠깐 떴다 사라지는 안내 문구 (예: "장비를 쓸 수 없음: 근처에 적 없음")
@@ -1309,6 +1353,8 @@ func _update_hud() -> void:
 		var c: Dictionary = s.commander
 		var bar := "병사 %d/%d" % [s.units.size(), s.max_soldiers]
 		var tag := "  (행군 중)" if s.marching else ""
+		if s.resting:
+			tag = "  (집에서 회복 중 %d%%)" % int(s.rest_progress() * 100.0) if s.units.size() < s.max_soldiers else "  (집에서 회복 중)"
 		if s.is_wiped():
 			bar = "전멸"
 			tag = ""
@@ -1389,7 +1435,7 @@ func _auto_command(dt: float) -> void:
 				use_item(s)
 	for i in range(squads.size()):
 		var s = squads[i]
-		if s.is_wiped() or s.marching:
+		if s.is_wiped() or s.marching or s.resting:
 			continue
 		var goal := NO_CELL
 		# 병사가 절반 아래로 줄었고 근처에 적이 없으면 가까운 집으로 가서 회복
@@ -1398,6 +1444,8 @@ func _auto_command(dt: float) -> void:
 			if hh != null:
 				if hh.cell != s.anchor_cell:
 					try_order(s, hh.cell)
+				else:
+					rest_squad(s)
 				continue
 		if landed.is_empty():
 			if not house_list.is_empty():

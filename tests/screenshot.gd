@@ -26,6 +26,11 @@ func _ready() -> void:
 	Game.roster[0]["item"] = "bomb"
 	Game.inventory.append("armor")
 	Game.changed.emit()
+	var home = load("res://scripts/ui/home_screen.gd").new()
+	add_child(home)
+	await _frames(10)
+	_save("home")
+	home.queue_free()
 	var map := CampaignScreen.new()
 	add_child(map)
 	await _frames(10)

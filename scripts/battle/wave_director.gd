@@ -42,8 +42,8 @@ static func _fill_boat(difficulty: int, wave: int, rng: RandomNumberGenerator, i
 
 ## 적 능력치 배율 (난이도가 오를수록 조금씩 강해짐)
 static func enemy_hp_mult(difficulty: int) -> float:
-	return 1.0 + 0.06 * float(difficulty)
+	return 1.15 + 0.14 * float(difficulty)
 
 
 static func enemy_dmg_mult(difficulty: int) -> float:
-	return 1.0 + 0.04 * float(difficulty)
+	return 1.1 + 0.09 * float(difficulty)
