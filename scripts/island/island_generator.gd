@@ -19,6 +19,7 @@ extends Node3D
 const GRASS := Color(0.49, 0.69, 0.41)
 const SAND := Color(0.86, 0.80, 0.60)
 const ROCK := Color(0.55, 0.55, 0.58)
+const TerrainBuilder := preload("res://scripts/island/terrain_builder.gd")
 const DIRS4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 var tiles: Dictionary = {}
@@ -301,28 +302,24 @@ func _touches_stairs(c: Vector2i) -> bool:
 # ================================================================ 그리기
 
 func _build_tiles() -> void:
+	# 칸 색 (지형 조각 .glb가 없을 때 쓰는 상자 색)
 	var shore := get_shore_cells()
+	var colors := {}
 	for cell in tiles.keys():
 		var h: int = tiles[cell]
-		var mesh := BoxMesh.new()
-		var height := h * step_height
-		mesh.size = Vector3(tile_size, height, tile_size)
-		var mi := MeshInstance3D.new()
-		mi.name = "Tile_%d_%d" % [cell.x, cell.y]
-		mi.mesh = mesh
 		var color := GRASS
 		if h == 1 and cell in shore:
 			color = SAND
 		elif h >= max_height:
 			color = GRASS.darkened(0.12)
-		mi.material_override = Assets.get_color_material(color)
-		mi.position = Vector3(cell.x * tile_size, height * 0.5, cell.y * tile_size)
-		add_child(mi)
-		if blocked.has(cell):
-			var rock := Assets.get_model("rock")
-			rock.position = cell_to_world(cell)
-			rock.rotation.y = _rng.randf() * TAU
-			add_child(rock)
+		colors[cell] = color
+	# 그리기만 terrain_builder 가 맡음. 이동 규칙(tiles·stairs)은 그대로.
+	TerrainBuilder.build(self, tiles, step_height, stairs, colors)
+	for cell in blocked.keys():
+		var rock := Assets.get_model("rock")
+		rock.position = cell_to_world(cell)
+		rock.rotation.y = _rng.randf() * TAU
+		add_child(rock)
 	# 계단: 낮은 칸 쪽 절반에 경사로를 놓음
 	for key in stairs.keys():
 		var parts: PackedStringArray = str(key).split("|")
