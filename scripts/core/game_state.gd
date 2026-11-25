@@ -70,7 +70,7 @@ func new_run(seed_value: int = 0) -> void:
 
 func _add_commander(cls: String) -> Dictionary:
 	var nm: String = _name_pool.pop_back() if not _name_pool.is_empty() else "지휘관%d" % _next_cid
-	var c := {"id": _next_cid, "name": nm, "cls": cls, "level": 1, "skill": false, "item": ""}
+	var c := {"id": _next_cid, "name": nm, "cls": cls, "level": 1, "skill": false, "item": "", "battles": 0, "saved": 0}
 	_next_cid += 1
 	roster.append(c)
 	if deploy_ids.size() < MAX_DEPLOY:
@@ -295,6 +295,12 @@ func reachable_nodes() -> Array:
 
 func apply_battle_result(node_id: int, result: Dictionary) -> void:
 	var wiped: Array = result.get("wiped", [])
+	# 전적: 이번에 출전한 지휘관의 출전 횟수, 지켜 낸 섬 수
+	for c in roster:
+		if c["id"] in deploy_ids and not (c["id"] in wiped):
+			c["battles"] = int(c.get("battles", 0)) + 1
+			if bool(result.get("won", false)):
+				c["saved"] = int(c.get("saved", 0)) + 1
 	roster = roster.filter(func(c): return not (c["id"] in wiped))
 	deploy_ids = deploy_ids.filter(func(id): return not (id in wiped))
 	if roster.is_empty():

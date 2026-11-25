@@ -1,12 +1,11 @@
 extends Control
-## 원정 지도 + 지휘관 관리 화면
+## 원정 지도 화면 (이웃 섬 고르기)
 ##
-## 왼쪽: 섬 지도. 밝게 빛나는 섬(지금 갈 수 있는 섬)을 누르면 전투가 시작됩니다.
-## 오른쪽: 골드, 지휘관 목록, 상점.
-##   - 지휘관: 출전 체크(최대 4명), 레벨업, 민병 승급, 병종 기술 배우기, 장비 달기
-##   - 상점: 장비 사기(창고로 들어감), 새 지휘관 고용
+## 왼쪽: 섬 지도. 밝게 빛나는 섬(지금 갈 수 있는 섬)을 누르면 그 섬을 지키러 가서 전투가 시작됩니다.
+## 오른쪽: 이번에 데려갈 분대 요약. 지휘관 관리(레벨업, 기술, 장비, 상점)는 본 섬 화면(home_screen.gd)에서 합니다.
 
 signal battle_requested(node_id: int)
+signal home_requested
 
 const UnitDefs := preload("res://scripts/battle/unit_defs.gd")
 const Catalog := preload("res://scripts/core/catalog.gd")
@@ -14,8 +13,7 @@ const Catalog := preload("res://scripts/core/catalog.gd")
 const MAP_MARGIN := Vector2(70, 90)
 
 var _map_area: Control
-var _roster_box: VBoxContainer
-var _shop_box: VBoxContainer
+var _deploy_box: VBoxContainer
 var _gold_label: Label
 var _info_label: Label
 var _node_buttons: Dictionary = {}
@@ -62,15 +60,19 @@ func _ready() -> void:
 	_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vb.add_child(_info_label)
 	vb.add_child(HSeparator.new())
-	_roster_box = VBoxContainer.new()
-	_roster_box.add_theme_constant_override("separation", 12)
-	vb.add_child(_roster_box)
+	vb.add_child(_label("데려갈 분대", 20))
+	_deploy_box = VBoxContainer.new()
+	_deploy_box.add_theme_constant_override("separation", 4)
+	vb.add_child(_deploy_box)
 	vb.add_child(HSeparator.new())
-	_shop_box = VBoxContainer.new()
-	_shop_box.add_theme_constant_override("separation", 8)
-	vb.add_child(_shop_box)
+	var home := Button.new()
+	home.text = "← 본 섬으로 돌아가 정비"
+	home.custom_minimum_size = Vector2(0, 48)
+	home.add_theme_font_size_override("font_size", 18)
+	home.pressed.connect(func(): home_requested.emit())
+	vb.add_child(home)
 
-	var map_title := _label("섬을 골라 출항하세요. 오른쪽 끝 [%s]을 지키면 승리!" % Game.ISLAND_NAMES[-1], 20)
+	var map_title := _label("지켜 줄 이웃 섬을 고르세요. 오른쪽 끝 [%s]을 지키면 원정 성공!" % Game.ISLAND_NAMES[-1], 20)
 	map_title.position = Vector2(24, 20)
 	_map_area.add_child(map_title)
 
@@ -146,103 +148,20 @@ func _refresh() -> void:
 		else:
 			b.modulate = Color(0.9, 0.9, 0.95)
 	_gold_label.text = "골드: %d" % Game.gold
-	_info_label.text = "섬 %d개 방어 완료.   출전 %d/%d명\n지킨 집마다 골드를 받습니다. 분대가 전멸하면 지휘관은 영영 돌아오지 않습니다. 집이 모두 불타면 그 섬을 잃습니다(보상 없음, ✖).\n'+지휘관' 섬을 지키면 새 지휘관(민병)이 합류합니다." % [Game.islands_cleared, Game.deployed_commanders().size(), Game.MAX_DEPLOY]
+	_info_label.text = "지켜 낸 섬 %d개.\n지킨 섬은 남은 집마다 골드로 보답합니다. 집이 모두 불타면 그 섬을 잃습니다(보상 없음, ✖).\n분대가 전멸하면 지휘관은 영영 돌아오지 않습니다.\n'+지휘관' 섬을 지키면 새 지휘관(민병)이 합류합니다." % Game.islands_cleared
 
-	for c in _roster_box.get_children():
+	for c in _deploy_box.get_children():
 		c.queue_free()
-	for c in Game.roster:
-		_roster_box.add_child(_commander_card(c))
-	_build_shop()
+	for c in Game.deployed_commanders():
+		var line := "%s  %s Lv%d  병사 %d명" % [str(c["name"]), UnitDefs.display_name(str(c["cls"])), int(c["level"]), Game.soldiers_for(c)]
+		if bool(c.get("skill", false)):
+			line += "  기술:" + Catalog.skill_name(str(c["cls"]))
+		if str(c.get("item", "")) != "":
+			line += "  장비:" + Catalog.item_name(str(c["item"]))
+		var l := _label(line, 15)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_deploy_box.add_child(l)
 	_map_area.queue_redraw()
-
-
-func _build_shop() -> void:
-	for c in _shop_box.get_children():
-		c.queue_free()
-	_shop_box.add_child(_label("상점 (섬을 지킬 때마다 물건이 바뀜)", 20))
-	for item in Game.shop:
-		var b := Button.new()
-		b.text = "%s (%dG): %s" % [Catalog.item_name(item), Catalog.ITEM_COST, Catalog.item_desc(item)]
-		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.disabled = not Game.can_buy_item(item)
-		b.pressed.connect(func(): Game.buy_item(item))
-		_shop_box.add_child(b)
-	var r := Button.new()
-	r.text = "지휘관 고용 (%dG): 민병 분대 하나 합류 (최대 %d명)" % [Catalog.RECRUIT_COST, Game.MAX_ROSTER]
-	r.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	r.disabled = not Game.can_recruit()
-	r.pressed.connect(func(): Game.recruit())
-	_shop_box.add_child(r)
-	if not Game.inventory.is_empty():
-		var names: PackedStringArray = []
-		for it in Game.inventory:
-			names.append(Catalog.item_name(it))
-		_shop_box.add_child(_label("창고: " + ", ".join(names) + "  (지휘관 카드에서 달기)", 15))
-
-
-func _commander_card(c: Dictionary) -> Control:
-	var panel := PanelContainer.new()
-	var vb := VBoxContainer.new()
-	panel.add_child(vb)
-	var cls := str(c["cls"])
-	var cid := int(c["id"])
-	var top := HBoxContainer.new()
-	vb.add_child(top)
-	var dep := CheckBox.new()
-	dep.text = "출전"
-	dep.button_pressed = Game.is_deployed(cid)
-	dep.focus_mode = Control.FOCUS_NONE
-	dep.toggled.connect(func(_on): Game.toggle_deploy(cid))
-	top.add_child(dep)
-	var head := _label("%s  -  %s  Lv%d" % [str(c["name"]), UnitDefs.display_name(cls), int(c["level"])], 19)
-	top.add_child(head)
-	var stats := _label("병사 %d명   체력 x%.2f   공격 x%.2f" % [Game.soldiers_for(c), Game.hp_mult(c), Game.dmg_mult(c)], 15)
-	vb.add_child(stats)
-	var gear: PackedStringArray = []
-	if bool(c.get("skill", false)):
-		gear.append("기술: " + Catalog.skill_name(cls))
-	if str(c.get("item", "")) != "":
-		gear.append("장비: " + Catalog.item_name(str(c["item"])))
-	if not gear.is_empty():
-		vb.add_child(_label("   ".join(gear), 15))
-	var row := HFlowContainer.new()
-	vb.add_child(row)
-	if cls == "militia":
-		for k in UnitDefs.PLAYER_CLASSES:
-			var b := Button.new()
-			b.text = "%s 승급 (%dG)" % [UnitDefs.display_name(k), Game.PROMOTE_COST]
-			b.disabled = not Game.can_promote(c)
-			b.pressed.connect(func(): Game.promote(cid, k))
-			row.add_child(b)
-	elif int(c["level"]) < Game.MAX_LEVEL:
-		var b := Button.new()
-		b.text = "레벨업 (%dG): 병사 +1, 능력치 상승" % Game.level_cost(c)
-		b.disabled = not Game.can_level_up(c)
-		b.pressed.connect(func(): Game.level_up(cid))
-		row.add_child(b)
-	else:
-		row.add_child(_label("최고 레벨", 15))
-	if Catalog.SKILLS.has(cls) and not bool(c.get("skill", false)):
-		var sk: Dictionary = Catalog.SKILLS[cls]
-		var b2 := Button.new()
-		b2.text = "기술 '%s' (%dG)" % [sk["name"], Catalog.SKILL_COST]
-		b2.tooltip_text = str(sk["desc"])
-		b2.disabled = not Game.can_buy_skill(c)
-		b2.pressed.connect(func(): Game.buy_skill(cid))
-		row.add_child(b2)
-	if str(c.get("item", "")) == "":
-		var seen := {}
-		for it in Game.inventory:
-			if seen.has(it):
-				continue
-			seen[it] = true
-			var b3 := Button.new()
-			b3.text = "%s 달기" % Catalog.item_name(it)
-			b3.tooltip_text = Catalog.item_desc(it) + " (한 번 달면 뗄 수 없음)"
-			b3.pressed.connect(func(): Game.equip(cid, it))
-			row.add_child(b3)
-	return panel
 
 
 func _on_node_pressed(id: int) -> void:

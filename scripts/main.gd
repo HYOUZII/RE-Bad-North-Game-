@@ -1,11 +1,12 @@
 extends Node3D
 ## 게임 시작점. 화면 전환만 담당합니다.
 ##
-## 흐름: 타이틀 → 원정 지도 → 섬 전투 → (승리) 원정 지도 → ... → 최종 섬 승리 또는 전멸
+## 흐름: 타이틀 → 본 섬(정비) → 원정 지도(이웃 섬 고르기) → 섬 전투 → 본 섬 → ... → 최종 섬 또는 전멸
 ## 각 화면은 따로 만든 스크립트가 맡고, 여기서는 갈아 끼우기만 합니다.
 
 const Battle := preload("res://scripts/battle/battle.gd")
 const CampaignScreen := preload("res://scripts/ui/campaign_screen.gd")
+const HomeScreen := preload("res://scripts/ui/home_screen.gd")
 
 var _current: Node
 
@@ -24,16 +25,23 @@ func _swap(n: Node) -> void:
 func _show_title() -> void:
 	_swap(_message_screen(
 		"Isle Defense",
-		"작은 섬들을 침략자로부터 지키며 바다 끝 성채까지 나아가세요.\n\n분대를 골라 칸을 클릭하면 이동합니다. 전투는 자동으로 벌어집니다.\n높은 곳은 유리하고, 적을 바다로 밀어내면 즉사합니다.\n보병은 화살을 막고, 궁수는 배를 쏘고, 창병은 거한을 잡습니다.",
+		"당신은 작은 섬의 영주입니다. 이웃 섬들이 침략자로부터 지켜 달라고 도움을 청합니다.\n본 섬에서 분대를 정비하고, 이웃 섬을 지키며 바다 끝 성채까지 나아가세요.\n\n분대를 골라 칸을 클릭하면 이동합니다. 전투는 자동으로 벌어집니다.\n높은 곳은 유리하고, 적을 바다로 밀어내면 즉사합니다.\n보병은 화살을 막고, 궁수는 배를 쏘고, 창병은 거한을 잡습니다.",
 		"새 원정 시작",
 		func():
 			Game.new_run()
-			_show_campaign()))
+			_show_home()))
+
+
+func _show_home() -> void:
+	var h := HomeScreen.new()
+	h.sail_requested.connect(_show_campaign)
+	_swap(h)
 
 
 func _show_campaign() -> void:
 	var s := CampaignScreen.new()
 	s.battle_requested.connect(_start_battle)
+	s.home_requested.connect(_show_home)
 	_swap(s)
 
 
@@ -52,7 +60,7 @@ func _on_battle_ended(result: Dictionary, node_id: int) -> void:
 		else:
 			_swap(_message_screen("원정 실패", "모든 지휘관을 잃었습니다.\n지킨 섬 %d개" % Game.islands_cleared, "처음으로", _show_title))
 	else:
-		_show_campaign()
+		_show_home()  # 전투가 끝나면 본 섬으로 돌아와 정비
 
 
 func _message_screen(title: String, body: String, button_text: String, on_press: Callable) -> Control:

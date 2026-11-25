@@ -8,7 +8,7 @@ extends Node3D
 
 const UnitDefs := preload("res://scripts/battle/unit_defs.gd")
 
-enum State { BOAT, ACTIVE, FALLING, DEAD }
+enum State { BOAT, ACTIVE, FALLING, DEAD, RESTING }  # RESTING = 집 안에서 회복 중(안 보임, 안 맞음)
 
 const STUN_SPEED := 0.35        # 넉백 속도가 이보다 크면 아무것도 못 함(비틀거림)
 const KNOCK_FRICTION := 7.0     # 넉백이 줄어드는 속도
@@ -104,7 +104,7 @@ func tick(dt: float) -> void:
 	velocity = (position - _last_pos) / max(dt, 0.0001)
 	_last_pos = position
 	match state:
-		State.DEAD, State.BOAT:
+		State.DEAD, State.BOAT, State.RESTING:
 			return
 		State.FALLING:
 			_fall_t += dt
@@ -154,6 +154,15 @@ func tick(dt: float) -> void:
 func _think_player(dt: float) -> void:
 	var slot: Vector3 = squad.slot_position(slot_index)
 	if squad.marching:
+		# 행군 중이라도 몸에 닿을 만큼 가까운 적을 만나면 맞서 싸움 (없으면 계속 걸어감)
+		var foe = battle.contact_enemy(self)
+		if foe != null:
+			squad.engaged = true
+			_target = foe
+			_face(foe.position)
+			if _attack_cd <= 0.0:
+				_start_attack(foe, false)
+			return
 		_target = null
 		_move_toward(slot, dt, 0.05)
 		return
@@ -274,6 +283,25 @@ func _cancel_windup() -> void:
 	_windup = 0.0
 	_windup_target = null
 	_windup_house = null
+
+
+## 집 안으로 들어감 (안 보이고, 싸우지도 맞지도 않음)
+func enter_rest(house_pos: Vector3) -> void:
+	state = State.RESTING
+	visible = false
+	position = house_pos
+	_last_pos = house_pos
+	knock_vel = Vector3.ZERO
+	_cancel_windup()
+	_target = null
+
+
+## 집에서 나와 pos에 섬
+func exit_rest(pos: Vector3) -> void:
+	state = State.ACTIVE
+	visible = true
+	position = Vector3(pos.x, battle.ground_y(pos), pos.z)
+	_last_pos = position
 
 
 ## 피해와 넉백을 받습니다. 체력 0 처리는 battle.gd가 합니다.

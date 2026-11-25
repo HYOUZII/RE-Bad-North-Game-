@@ -57,6 +57,7 @@ func _run(seed_value: int) -> bool:
 		b.house_burned.connect(func(_h): _count("house_burned"))
 		b.unit_fell.connect(func(u): _count("fell_sea_%s" % ("player" if u.team == 0 else "enemy")))
 		b.squad_reinforced.connect(func(_s): _count("reinforced"))
+		b.squad_rest_changed.connect(func(_s, on): _count("rest_enter" if on else "rest_exit"))
 		add_child(b)
 		var timer := get_tree().create_timer(150.0)
 		var on_timeout := func():
