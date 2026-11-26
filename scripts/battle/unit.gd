@@ -15,6 +15,10 @@ const KNOCK_FRICTION := 7.0     # 넉백이 줄어드는 속도
 const STUCK_RETREAT_TIME := 25.0  # 적이 이 시간 동안 꼼짝 못 하면 퇴각(사라짐)
 const FALL_TIME := 0.8          # 바다에 빠진 뒤 사라질 때까지 시간
 const FALL_DAMAGE_PER_STEP := 8.0  # 넉백으로 2단 이상 절벽에서 떨어질 때 1단당 피해
+const ACCEL := 8.0              # 걷기 시작할 때 빨라지는 정도(m/s²). 0.2초쯤이면 제 속도
+const BRAKE := 5.0              # 자리에 다가가며 느려지는 정도(m/s²). 클수록 급정거
+const TURN_RATE := 12.0         # 몸 돌리는 속도(라디안/초). 한 바퀴 반 도는 데 약 0.5초
+const CORPSE_TIME := 2.5        # 쓰러진 몸이 남아 있는 시간(초)
 
 var battle  # battle.gd (서로 참조해서 타입은 생략)
 var type_id: String = ""
@@ -50,6 +54,10 @@ var _house_t := 0.0      # 적: 집을 다시 고를 때까지 남은 시간
 var _last_pos := Vector3.ZERO
 var _model: Node3D
 var _ring: Node3D
+var _cur_speed := 0.0    # 지금 걷는 속도(가속·감속 반영)
+var _walked := 0.0       # 이번 단계에 스스로 걸어간 거리(밀려난 건 빼고) → 걷기 동작 속도
+var _yaw_goal := 0.0     # 몸이 돌아가려는 방향
+var _face_lock := 0.0    # 공격 중에는 잠깐 상대 쪽을 계속 봄
 
 
 ## tier: 병사 그림 단계("basic" 기본 / "veteran" 숙련 / "elite" 정예)
@@ -63,6 +71,7 @@ func setup(p_battle, p_type: String, p_team: int, hp_mult: float, dmg_mult: floa
 	damage_mult = dmg_mult
 	_model = Assets.get_model(p_type, tier)
 	add_child(_model)
+	_yaw_goal = rotation.y
 	# 처음 공격 타이밍을 조금씩 어긋나게(모두 동시에 휘두르지 않게)
 	_attack_cd = randf_range(0.0, 0.4)
 	_ranged_cd = randf_range(0.0, 0.8)
@@ -77,6 +86,10 @@ func set_leader(on: bool) -> void:
 	if on == is_leader:
 		return
 	is_leader = on
+	# 움직이는 3D 병사는 모델을 바꾸지 않고 망토만 둘러서 표시(동작이 끊기지 않게)
+	if _model != null and _model.has_method("can_be_leader"):
+		_model.set_leader(on)
+		return
 	if on:
 		_plain_model = _model
 		_plain_model.visible = false
@@ -94,8 +107,14 @@ func _anim(action: String) -> void:
 	if _model == null:
 		return
 	for c in _model.get_children():
-		if c.has_method("play"):
+		if c is Sprite3D and c.has_method("play"):
 			c.play(action)
+
+
+## 움직이는 3D 병사(rig_actor.gd)라면 그 동작을 부름. 그림 병사·임시 도형이면 아무 일 없음
+func _rig(method: String, args: Array = []) -> void:
+	if _model != null and _model.has_method(method):
+		_model.callv(method, args)
 
 
 func radius() -> float:
@@ -135,15 +154,34 @@ func tick(dt: float) -> void:
 	velocity = (position - _last_pos) / max(dt, 0.0001)
 	_last_pos = position
 	match state:
-		State.DEAD, State.BOAT, State.RESTING:
+		State.DEAD, State.RESTING:
+			return
+		State.BOAT:
+			_rig("animate", [dt, 0.0])
 			return
 		State.FALLING:
 			_fall_t += dt
 			position.y -= dt * 2.5
+			_rig("animate", [dt, 0.0])
 			if _fall_t >= FALL_TIME:
 				battle.kill_unit(self, "drown")
 			return
+	_walked = 0.0
+	_act(dt)
+	if _walked <= 0.0:
+		_cur_speed = move_toward(_cur_speed, 0.0, ACCEL * 2.0 * dt)
+	_turn(dt)
+	_rig("animate", [dt, _walked / max(dt, 0.0001)])
 
+
+## 몸을 바라볼 방향으로 조금씩 돌림 (순간적으로 휙 돌지 않게)
+func _turn(dt: float) -> void:
+	_face_lock = max(0.0, _face_lock - dt)
+	rotation.y = rotate_toward(rotation.y, _yaw_goal, TURN_RATE * dt)
+
+
+## 넉백·공격 준비·생각하기 (한 단계)
+func _act(dt: float) -> void:
 	_attack_cd -= dt
 	_ranged_cd -= dt
 	if buff_t > 0.0:
@@ -178,6 +216,12 @@ func tick(dt: float) -> void:
 	else:
 		_think_enemy(dt)
 	_update_height(dt)
+
+
+## 배에서 내림: 배가 보던 방향을 그대로 이어서 봄
+func on_landed() -> void:
+	_yaw_goal = rotation.y
+	_cur_speed = 0.0
 
 
 # ---------------------------------------------------------------- 아군 행동
@@ -219,6 +263,9 @@ func _think_player(dt: float) -> void:
 				_move_toward(_target.position, dt, 0.0)
 				return
 	_move_toward(slot, dt, 0.05)
+	# 자리에 서 있을 때는 노리는 적 쪽을 바라봄
+	if _walked <= 0.0 and valid(_target):
+		_face(_target.position)
 
 
 # ---------------------------------------------------------------- 적 행동
@@ -263,6 +310,7 @@ func _think_enemy(dt: float) -> void:
 				_windup = float(def["windup"])
 				_windup_house = house
 				_anim("attack")
+				_rig("play_attack", [_windup])
 				_idle_t = 0.0
 				_attack_cd = float(def["cooldown"])
 			return
@@ -289,7 +337,12 @@ func _start_attack(t, ranged: bool) -> void:
 	else:
 		_windup = float(def["windup"])
 		_attack_cd = float(def["cooldown"]) * randf_range(0.9, 1.1)
+	if ranged:
+		_rig("play_aim", [_windup])
+	else:
+		_rig("play_attack", [_windup])
 	_face(t.position)
+	_face_lock = _windup + 0.15
 	battle.unit_attack_started.emit(self, t)
 
 
@@ -305,6 +358,7 @@ func _resolve_attack() -> void:
 	if not valid(t):
 		return
 	if _windup_ranged:
+		_rig("play_shoot")
 		battle.fire_arrow(self, t)
 	elif t.state == State.ACTIVE:
 		var gap: float = _flat_dist(t.position) - radius() - t.radius()
@@ -335,11 +389,16 @@ func exit_rest(pos: Vector3) -> void:
 	visible = true
 	position = Vector3(pos.x, battle.ground_y(pos), pos.z)
 	_last_pos = position
+	_cur_speed = 0.0
 
 
 ## 피해와 넉백을 받습니다. 체력 0 처리는 battle.gd가 합니다.
-func take_hit(dmg: float, knock: Vector3) -> void:
+func take_hit(dmg: float, knock: Vector3, ranged: bool = false) -> void:
 	_anim("hit")
+	# 방패병은 화살을 방패로 막는 모습, 나머지는 움찔
+	# 단, 휘두르는 중에 약하게 맞으면 움찔하지 않음(공격 동작이 끊겨 보이는데 피해는 들어가는 어색함 방지)
+	if _windup <= 0.0 or knock.length() > 1.0:
+		_rig("play_hit", [ranged and bool(def["shielded"])])
 	hp -= dmg
 	knock_vel += knock
 	if knock.length() > 1.0:
@@ -369,11 +428,26 @@ func _move_toward(goal: Vector3, dt: float, stop_dist: float) -> void:
 	var dist := dir.length()
 	if dist < 0.001:
 		return
-	var step: float = min(dist, float(def["speed"]) * speed_mult * mod("speed") * dt)
+	# 가속: 멈춰 있다가 바로 최고 속도로 튀어 나가지 않게
+	var top: float = float(def["speed"]) * speed_mult * mod("speed")
+	_cur_speed = move_toward(_cur_speed, top, ACCEL * dt)
+	# 감속: 자기 자리(stop_dist > 0)로 갈 때는 다가갈수록 천천히 멈춤
+	if stop_dist > 0.0 and waypoint == goal:
+		var left: float = to.length() - stop_dist
+		_cur_speed = min(_cur_speed, max(0.25, sqrt(2.0 * BRAKE * max(left, 0.0))))
 	var move_dir: Vector3 = battle.steer_around_houses(position, dir / dist, radius(), dist)
+	# 크게 방향을 틀 때는 잠깐 느려짐(제자리에서 휙 돌지 않고 돌아서 감)
+	var want_yaw := atan2(-move_dir.x, -move_dir.z)
+	var turn_gap: float = abs(wrapf(want_yaw - rotation.y, -PI, PI))
+	var turn_slow: float = clamp(1.25 - turn_gap / PI, 0.35, 1.0)
+	var step: float = min(dist, _cur_speed * turn_slow * dt)
+	var before := position
 	if not _try_move(move_dir * step, false):
 		_path_age = 2.0  # 막혔으면 다음에 길 다시 찾기
-	_face(waypoint)
+		_cur_speed *= 0.5
+	_walked += Vector2(position.x - before.x, position.z - before.z).length()
+	if _face_lock <= 0.0:
+		_yaw_goal = want_yaw
 
 
 ## 살짝 밀어내기(겹침 방지)용
@@ -411,6 +485,7 @@ func _apply_move(delta: Vector3, knock: bool) -> bool:
 		position.z = newp.z
 		state = State.FALLING
 		_cancel_windup()
+		_rig("play_fall")
 		battle.unit_fell.emit(self)
 		return true
 	if not tiles.has(c0):
@@ -437,12 +512,41 @@ func _update_height(dt: float) -> void:
 	position.y = lerp(position.y, ground, min(1.0, dt * 14.0))
 
 
-## 모델 정면(-Z)이 p를 보게 돌림
+## 모델 정면(-Z)이 p를 보게 돌림 (실제로는 _turn이 조금씩 돌림)
 func _face(p: Vector3) -> void:
 	var dx := p.x - position.x
 	var dz := p.z - position.z
 	if dx * dx + dz * dz > 0.0001:
-		rotation.y = atan2(-dx, -dz)
+		_yaw_goal = atan2(-dx, -dz)
+
+
+## 쓰러짐: 3D 병사는 몸을 그 자리에 남겨 쓰러지는 동작을 보여 줌(잠시 뒤 가라앉아 사라짐)
+## 바다에 빠졌거나 배로 도망간 경우는 남기지 않음
+## holder: 배 위에서 쓰러졌으면 그 배(몸이 배와 함께 움직이게)
+func leave_corpse(cause: String, holder: Node3D = null) -> void:
+	if _model == null or not _model.has_method("become_corpse") or cause in ["drown", "retreat"]:
+		return
+	if not visible:
+		return
+	var parent: Node = holder if holder != null else get_parent()
+	if parent == null:
+		return
+	var xf := _model.global_transform if _model.is_inside_tree() else transform * _model.transform
+	if _ring != null:
+		_ring.visible = false
+	remove_child(_model)
+	parent.add_child(_model)
+	_model.global_transform = xf
+	_model.become_corpse(CORPSE_TIME, battle)
+	_model = null
+
+
+## 전투가 끝남: 이긴 쪽 아군은 환호. 모두 이후로는 동작이 스스로 흘러감
+## (전투 단계가 멈춰도 달리던 자세로 굳어 있지 않고 서 있기로 돌아감)
+func on_battle_end(won: bool) -> void:
+	if won and team == 0 and state == State.ACTIVE:
+		_rig("play_cheer")
+	_rig("release")
 
 
 func _flat_dist(p: Vector3) -> float:

@@ -234,7 +234,7 @@ func land_unit(u, cell: Vector2i) -> void:
 		return
 	u.state = u.State.ACTIVE
 	u.position = cell_center(cell) + Vector3(_rng.randf_range(-0.2, 0.2), 0.0, _rng.randf_range(-0.2, 0.2))
-	u.rotation = Vector3.ZERO
+	u.on_landed()
 
 
 func remove_boat(b) -> void:
@@ -244,13 +244,20 @@ func remove_boat(b) -> void:
 
 # ================================================================ 매 단계 진행
 
+## 전투 시간이 흐르는 빠르기 (일시정지 0, 분대 고르는 중 느리게). 쓰러진 몸도 이 빠르기를 따름
+func time_scale() -> float:
+	if paused and not finished:
+		return 0.0
+	var scale := speed
+	if selected != null and not auto_play and not finished:
+		scale *= SLOWMO_SCALE
+	return scale
+
+
 func _physics_process(delta: float) -> void:
 	if finished or paused:
 		return
-	var scale := speed
-	if selected != null and not auto_play:
-		scale *= SLOWMO_SCALE
-	var total := delta * scale
+	var total := delta * time_scale()
 	var steps: int = max(1, int(ceil(total / MAX_STEP)))
 	var dt := total / float(steps)
 	for _i in range(steps):
@@ -684,7 +691,7 @@ func _apply_damage(info: Dictionary, target, base: float, ranged: bool) -> void:
 	var kb := dir * force
 	if target.state == target.State.BOAT:
 		kb = Vector3.ZERO
-	target.take_hit(dmg, kb)
+	target.take_hit(dmg, kb, ranged)
 	_last_action_t = elapsed
 	var attacker = info["unit"] if is_instance_valid(info["unit"]) else null
 	unit_hit.emit(target, attacker, dmg, kb, ranged)
@@ -925,9 +932,16 @@ func damage_house(attacker, h, dmg: float) -> void:
 func kill_unit(u, cause: String) -> void:
 	if u.state == u.State.DEAD:
 		return
+	# 배 위에서 쓰러지면 몸을 배에 붙여 둠(배가 떠나도 허공에 남지 않게)
+	var holder = null
+	if u.state == u.State.BOAT:
+		for bt in boats:
+			if u in bt.passengers:
+				holder = bt
 	u.state = u.State.DEAD
 	units.erase(u)
 	unit_died.emit(u, cause)
+	u.leave_corpse(cause, holder)  # 3D 병사는 쓰러지는 모습을 잠깐 남김
 	u.queue_free()
 
 
@@ -958,6 +972,8 @@ func _check_end() -> void:
 func _finish(won: bool) -> void:
 	finished = true
 	_select(null)
+	for u in units:
+		u.on_battle_end(won)
 	var gold := 0
 	var saved := 0
 	for h in houses:

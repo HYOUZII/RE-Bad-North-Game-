@@ -49,10 +49,11 @@
 | `scripts/island/` | 절차적 섬 생성 |
 | `scripts/battle/` | 전투: 유닛(`unit.gd`), 분대, 배, 집, 화살, 웨이브 구성, 길찾기, 능력치 표(`unit_defs.gd`) |
 | `scripts/ui/` | 본 섬 정비 화면(`home_screen.gd`), 원정 지도 화면(`campaign_screen.gd`) |
-| `tests/` | 자동 플레이 테스트(`smoke_test.tscn`), 스크린샷 도구 |
+| `tests/` | 자동 플레이 테스트(`smoke_test.tscn`), 스크린샷 도구, 병사 동작 가까이 찍기(`closeup.tscn`) |
 | `scripts/camera/` | 카메라 조작 |
 | `scripts/ai/` | 게임 실행 중 AI 모델 호출 (`AI.ask(...)`) |
 | `assets/models/` | 직접 만든 3D 모델(.glb)을 넣는 곳 |
+| `assets/characters/` | 움직이는 3D 병사 캐릭터(임시: KayKit, CC0 무료) |
 | `docs/` | 설치, 그래픽 제작, AI 연동 안내서 |
 
 ## 개발 단계
