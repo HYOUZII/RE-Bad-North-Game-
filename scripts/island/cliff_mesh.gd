@@ -23,8 +23,8 @@ const BACK_INSET := 0.06      # 뒷벽은 외곽선보다 이만큼 안쪽
 const SELF_W := 0.7           # 물결선 모양 다듬기 비중
 
 # 색: 채도를 낮춘 풀과 모래 (눈부시지 않게)
-const GRASS := Color(0.39, 0.52, 0.34)
-const GRASS_HIGH := Color(0.43, 0.56, 0.37)
+const GRASS := Color(0.36, 0.51, 0.30)
+const GRASS_HIGH := Color(0.40, 0.55, 0.33)
 const SAND := Color(0.74, 0.69, 0.55)
 const ROCK_ROOF := Color(0.58, 0.60, 0.57)
 const BACK_WALL := Color(0.30, 0.32, 0.32)
@@ -35,6 +35,9 @@ const FOAM_ISO := 0.26       # 물결선: 섬 외곽선보다 조금 바깥(값�
 
 ## 동굴 지붕 칸 (지붕 윗면을 풀 대신 바위색으로 칠해서 "위로는 못 걷는 곳"이 보이게)
 static var _roof: Dictionary = {}
+static var _stairs: Dictionary = {}
+const EDGE_JITTER := 0.12   # 외곽선 점을 칸 경계에서 앞뒤로 흔드는 양(m). 자로 그은 팔각형처럼 안 보이게
+const ROOF_T := 0.3         # 낮은 동굴 지붕 두께(m)
 
 
 ## 섬 지형을 만들어 돌려줍니다 (Node3D 하나 아래에 윗면 메시 + 바위 조각들).
@@ -50,6 +53,7 @@ static func build(tiles: Dictionary, step: float, sand: Dictionary, caves: Dicti
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	_roof = {}
+	_stairs = stairs
 	var max_h := 0
 	for c in caves.keys():
 		_roof[c] = int(caves[c])
@@ -87,27 +91,50 @@ static func build(tiles: Dictionary, step: float, sand: Dictionary, caves: Dicti
 				while k > 1 and _pattern(solid[k - 1], x, z) == pat:
 					k -= 1
 				var y_bot: float = ly.call(k - 1) if k > 1 else -SEA_DEPTH
+				# 동굴 지붕 단: 벽은 천장 높이까지만 (그 아래는 통로)
+				var cs := _corners(x, z)
+				for i in range(4):
+					var cc := Vector2i(cs[i])
+					if _inside(pat, i) and caves.has(cc) and int(caves[cc]) == level:
+						y_bot = maxf(y_bot, _ceil_y(ly, tiles, caves, cc))
 				for seg in _segments(x, z, pat):
 					_back_wall(st, seg, y_top, y_bot)
-					if _on_stairs(seg, stairs):
+					# 계단이 기대는 쪽 끝은 계단 폭만큼 비우고 나머지에만 바위 (계단 옆에 맨 벽이 안 보이게)
+					var sa := _stair_end(seg[0], stairs)
+					var sb := _stair_end(seg[1], stairs)
+					if sa and sb:
 						continue
-					_place_piece(cliffs, seg, pat, level, k, y_top, y_bot, tiles)
+					var piece_seg: Array = seg.duplicate()
+					if sa:
+						piece_seg[0] = (seg[0] as Vector2).lerp(seg[1], 0.34)
+					if sb:
+						piece_seg[1] = (seg[1] as Vector2).lerp(seg[0], 0.34)
+					_place_piece(cliffs, piece_seg, pat, level, k, y_top, y_bot, tiles)
 	# 동굴: 통로 천장(아래를 보는 어두운 면)과 어두운 바닥
 	for c in caves.keys():
 		var floor_y: float = ly.call(int(tiles[c]))
-		var ceil_y: float = ly.call(int(caves[c]) - 1) - 0.005
-		var r := 0.45
+		var ceil_y := _ceil_y(ly, tiles, caves, c) - 0.005
+		var r := 0.5
 		var sq: Array = [Vector2(c.x - r, c.y - r), Vector2(c.x + r, c.y - r), Vector2(c.x + r, c.y + r), Vector2(c.x - r, c.y + r)]
 		for k in [[0, 1, 2], [0, 2, 3]]:
 			for i in k:
 				st.set_color(CAVE_DARK)
 				st.set_normal(Vector3.DOWN)
 				st.add_vertex(Vector3(sq[i].x, ceil_y, sq[i].y))
-		for k in [[0, 1, 2], [0, 2, 3]]:
-			for i in k:
-				st.set_color(GRASS.darkened(0.35))
-				st.set_normal(Vector3.UP)
-				st.add_vertex(Vector3(sq[i].x, floor_y + 0.004, sq[i].y))
+		# 통로 옆벽 (옆 칸이 동굴도 입구도 아니면 어두운 벽)
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + d
+			if caves.has(n) or int(tiles.get(n, 0)) == int(tiles[c]):
+				continue
+			var side := Vector2(c) + Vector2(d) * 0.49
+			var along := Vector2(d.y, d.x) * 0.5
+			var p0 := side - along
+			var p1 := side + along
+			for tri in [[Vector3(p0.x, ceil_y, p0.y), Vector3(p1.x, ceil_y, p1.y), Vector3(p1.x, floor_y, p1.y)], [Vector3(p0.x, ceil_y, p0.y), Vector3(p1.x, floor_y, p1.y), Vector3(p0.x, floor_y, p0.y)]]:
+				for p in tri:
+					st.set_color(CAVE_DARK)
+					st.set_normal(Vector3(-d.x, 0, -d.y))
+					st.add_vertex(p)
 	# 해안 물결선: 섬보다 조금 넓은 띠를 수면 바로 위에 깔고, 섬이 그 위를 덮음
 	var f1 := _field(tiles, lo, hi)
 	for x in range(lo.x - 1, hi.x + 1):
@@ -160,8 +187,16 @@ static func _inside(pat: int, i: int) -> bool:
 
 
 ## 변 i(꼭짓점 i → i+1)의 가운데 점
+## 위치로 정해지는 만큼 경계를 따라 조금 밀어서 외곽선이 자로 그은 듯 보이지 않게 함.
+## 같은 경계는 어느 단·어느 네모에서 봐도 같은 점 → 위아래 절벽과 윗면이 딱 맞음. 계단 경계는 밀지 않음
 static func _mid(cs: Array[Vector2], i: int) -> Vector2:
-	return (cs[i] + cs[(i + 1) % 4]) * 0.5
+	var a := cs[i]
+	var b := cs[(i + 1) % 4]
+	var m := (a + b) * 0.5
+	if _stairs.has(_edge_key(Vector2i(a), Vector2i(b))):
+		return m
+	var axis := (b - a).abs()   # 항상 +x 또는 +z 방향 (어느 쪽에서 봐도 같은 방향)
+	return m + axis * (_hash01(m * 1.37 + Vector2(0.71, 0.29)) * 2.0 - 1.0) * EDGE_JITTER
 
 
 ## 윗면: 안쪽 꼭짓점과 경계 가운데 점을 차례로 이은 다각형
@@ -222,24 +257,28 @@ static func _outward(a: Vector2, b: Vector2, out_ref: Vector2) -> Vector2:
 	return n
 
 
-## 계단이 기대는 면인가: 토막 양 끝(칸 경계 가운데)이 계단 경계면
-static func _on_stairs(seg: Array, stairs: Dictionary) -> bool:
+## 동굴 천장 높이: 지붕이 바닥보다 두 단 이상 높으면 지붕 단의 바닥, 한 단만 높으면 지붕 윗면에서 ROOF_T 아래
+static func _ceil_y(ly: Callable, tiles: Dictionary, caves: Dictionary, c: Vector2i) -> float:
+	var roof := int(caves[c])
+	if roof >= int(tiles[c]) + 2:
+		return ly.call(roof - 1)
+	return float(ly.call(roof)) - ROOF_T
+
+
+## 토막 끝점(칸 경계 가운데)이 계단 경계면인가
+static func _stair_end(p: Vector2, stairs: Dictionary) -> bool:
 	if stairs.is_empty():
 		return false
-	for p in [seg[0], seg[1]]:
-		var v: Vector2 = p
-		# 가운데 점이 칸 경계 위: x 가 .5 면 좌우 두 칸, z 가 .5 면 위아래 두 칸
-		var a: Vector2i
-		var b: Vector2i
-		if absf(v.x - round(v.x)) > 0.25:
-			a = Vector2i(int(floor(v.x)), int(round(v.y)))
-			b = a + Vector2i(1, 0)
-		else:
-			a = Vector2i(int(round(v.x)), int(floor(v.y)))
-			b = a + Vector2i(0, 1)
-		if stairs.has(_edge_key(a, b)):
-			return true
-	return false
+	# 가운데 점이 칸 경계 위: x 가 .5 근처면 좌우 두 칸, 아니면 위아래 두 칸
+	var a: Vector2i
+	var b: Vector2i
+	if absf(p.x - round(p.x)) > 0.25:
+		a = Vector2i(int(floor(p.x)), int(round(p.y)))
+		b = a + Vector2i(1, 0)
+	else:
+		a = Vector2i(int(round(p.x)), int(floor(p.y)))
+		b = a + Vector2i(0, 1)
+	return stairs.has(_edge_key(a, b))
 
 
 static func _edge_key(a: Vector2i, b: Vector2i) -> String:
@@ -271,7 +310,7 @@ static func _place_piece(parent: Node3D, seg: Array, pat: int, level: int, k: in
 	var piece := Assets.get_rock_piece(kind, pick, Vector3(length, height, RockKit.FRONT_OUT + RockKit.BACK_IN))
 	# 크기·각도 변화: 가로는 넓게(겹치게)만, 높이는 맨 위가 풀밭보다 올라가지 않게 아래로만 줄임
 	var sx := 1.0 + rnd * 0.12
-	var sz := 0.85 + _hash01(mid * 3.3) * 0.35
+	var sz := 0.75 + _hash01(mid * 3.3) * 0.25   # 1 이하: 바위가 아래 칸으로 너무 나와 병사를 가리지 않게
 	piece.scale = Vector3(sx, 1.0, sz)
 	piece.position = Vector3(mid.x, y_bot, mid.y)
 	piece.rotation.y = atan2(-outward.x, -outward.y) + (rnd - 0.5) * 0.12

@@ -471,8 +471,8 @@ func _carve_caves(max_count: int) -> void:
 		if clash:
 			continue
 		for c in run:
-			# 지붕 높이: 원래 높이. 한 단 높은 고원을 뚫을 때는 지붕을 한 단 더 올려 바위 다리(아치)처럼 보이게
-			caves[c] = maxi(int(tiles[c]), int(f["floor"]) + 2)
+			# 지붕 높이 = 원래 높이. 한 단 높은 고원을 뚫으면 지붕 윗면이 고원과 같은 높이(얇은 지붕, cliff_mesh ROOF_T)
+			caves[c] = int(tiles[c])
 			tiles[c] = int(f["floor"])  # 걷는 높이 = 입구 높이
 		made += 1
 
@@ -497,7 +497,7 @@ func _check_caves() -> void:
 			i += 1
 		var bad := false
 		for c in comp:
-			if not tiles.has(c) or int(caves[c]) < int(tiles[c]) + 2:
+			if not tiles.has(c) or int(caves[c]) < int(tiles[c]) + 1:
 				bad = true
 				break
 			# 통로 방향: 옆 동굴 칸이 있는 쪽. 한 칸짜리면 양옆이 높은 쪽을 통로 방향으로 봄
@@ -651,7 +651,7 @@ func _parse_cell(s: String) -> Vector2i:
 ## 집 위치만 정합니다. 집 모델과 체력은 전투(battle.gd)가 만듭니다.
 func _place_houses(count: int) -> void:
 	var shore := get_shore_cells()
-	var candidates: Array = tiles.keys().filter(func(c): return is_walkable(c) and not (c in shore) and not _touches_stairs(c) and not caves.has(c))
+	var candidates: Array = tiles.keys().filter(func(c): return is_walkable(c) and not (c in shore) and not _touches_stairs(c) and not caves.has(c) and not _near_cave(c))
 	_shuffle(candidates)
 	for min_gap in [4, 3, 2, 1]:
 		for cell in candidates:
@@ -697,7 +697,7 @@ func _place_bushes() -> void:
 			for _k in range(_rng.randi_range(1, 3)):
 				var b := Assets.get_model("bush")
 				var along := _rng.randf_range(-0.4, 0.4)
-				var off := Vector3(d.x, 0, d.y) * (0.3 if cliff else 0.18) + Vector3(d.y, 0, d.x) * along
+				var off := Vector3(d.x, 0, d.y) * (0.2 if cliff else 0.18) + Vector3(d.y, 0, d.x) * along
 				b.position = cell_to_world(c) + off
 				var sc := _rng.randf_range(0.7, 1.3)
 				b.scale = Vector3(sc, sc * _rng.randf_range(0.8, 1.1), sc)

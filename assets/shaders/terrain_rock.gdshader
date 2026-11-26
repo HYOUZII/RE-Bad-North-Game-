@@ -7,8 +7,8 @@
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
 
-uniform vec3 rock_light : source_color = vec3(0.68, 0.69, 0.65);
-uniform vec3 rock_dark : source_color = vec3(0.47, 0.49, 0.47);
+uniform vec3 rock_light : source_color = vec3(0.60, 0.61, 0.58);
+uniform vec3 rock_dark : source_color = vec3(0.42, 0.44, 0.43);
 uniform vec3 moss : source_color = vec3(0.40, 0.51, 0.35);
 uniform vec3 wet : source_color = vec3(0.33, 0.37, 0.37);
 uniform float band_height = 0.28;

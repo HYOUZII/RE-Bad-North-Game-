@@ -20,7 +20,7 @@ const KINDS := {
 	"shore_rock": "바닷가 낮은 땅 가장자리 바위턱",
 }
 
-const FRONT_OUT := 0.22   # 앞으로 튀어나오는 최대 깊이(m)
+const FRONT_OUT := 0.13   # 앞으로 튀어나오는 최대 깊이(m). 크면 아래 칸 병사가 바위에 파묻혀 보임
 const BACK_IN := 0.25     # 땅 속으로 들어가는 깊이(m)
 const OVERLAP := 1.14     # 이웃 조각과 겹치게 가로를 조금 넓힘 (틈이 안 보이게)
 const BAND_H := 0.28      # 지층 한 줄 높이(m)
@@ -68,7 +68,7 @@ static func _build(kind: String, size: Vector3, rng: RandomNumberGenerator) -> A
 		ys.append(y)
 		ys.append(minf(y + 0.05, h - 0.05))
 	ys.append(h - 0.07)   # 윗 테두리(살짝 둥근 턱)
-	ys.append(h)
+	ys.append(h - 0.012)  # 풀밭보다 살짝 아래 (같은 높이면 깜빡임)
 	# 점마다 앞으로 튀어나온 정도 (0 = 외곽선, 음수 Z = 바깥)
 	var grid: Array = []
 	for j in range(ys.size()):
@@ -80,16 +80,16 @@ static func _build(kind: String, size: Vector3, rng: RandomNumberGenerator) -> A
 			var x := lerpf(-w * 0.5, w * 0.5, u)
 			if i > 0 and i < cols - 1:
 				x += rng.randf_range(-0.06, 0.06)
-			var out := 0.07 + rng.randf_range(0.0, 0.1)
-			out += (1.0 - t) * (0.22 if shore else 0.07)   # 아래쪽이 조금 넓음 (바닷가 턱은 비탈)
+			var out := 0.04 + rng.randf_range(0.0, 0.06)
+			out += (1.0 - t) * (0.14 if shore else 0.04)   # 아래쪽이 조금 넓음 (바닷가 턱은 비탈)
 			if is_ledge:
-				out += 0.05   # 턱: 바로 아래 줄보다 앞으로 나옴
+				out += 0.035   # 턱: 바로 아래 줄보다 앞으로 나옴
 			var side := absf(u - 0.5) * 2.0
 			out *= 1.0 - side * side * 0.55   # 양 끝은 뒤로 물러나서 옆 조각과 자연스럽게 겹침
 			if j == ys.size() - 1:
 				out = 0.02   # 맨 윗줄은 외곽선(풀밭 가장자리)에 딱 붙음
 			elif j == ys.size() - 2:
-				out = minf(out, 0.1)
+				out = minf(out, 0.07)
 			row.append(Vector3(x, ys[j], -minf(out, FRONT_OUT)))
 		grid.append(row)
 	var st := SurfaceTool.new()
@@ -119,7 +119,7 @@ static func _build(kind: String, size: Vector3, rng: RandomNumberGenerator) -> A
 	for i in range(cols - 1):
 		var p0: Vector3 = grid[ys.size() - 1][i]
 		var p1: Vector3 = grid[ys.size() - 1][i + 1]
-		_quad(st, p0, p1, Vector3(p1.x, h, BACK_IN), Vector3(p0.x, h, BACK_IN))
+		_quad(st, p0, p1, Vector3(p1.x, p1.y, BACK_IN), Vector3(p0.x, p0.y, BACK_IN))
 	st.generate_normals()
 	return st.commit()
 
