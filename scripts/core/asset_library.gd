@@ -317,6 +317,54 @@ func get_terrain_piece(kind: String, pick: int, step: float) -> Node3D:
 	return root
 
 
+## 여러 칸짜리 지형 덩어리 모델 (assets/models/terrain_chunks/<이름>.glb). 원점 = 바닥 가운데, 1칸 = 1m 그대로.
+## 칸 높이 정보는 scripts/island/terrain_chunks.gd 가 tiles.json 에서 읽습니다.
+## inland: 섬 안쪽 덩어리면 모래색을 풀색으로 (해변처럼 안 보이게)
+func get_chunk_model(chunk_name: String, inland: bool = false) -> Node3D:
+	var path := "res://assets/models/terrain_chunks/" + chunk_name + ".glb"
+	if not ResourceLoader.exists(path):
+		return null
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return null
+	var root := Node3D.new()
+	root.name = "Chunk_" + chunk_name
+	var inst := scene.instantiate() as Node3D
+	_fix_chunk_meshes(inst, inland)
+	root.add_child(inst)
+	return root
+
+
+## 덩어리 모델 색 (파일의 재질 이름 끝 6글자 -> 섬 색). 파일 색이 거의 흰색이라 상자 칸과 어울리게 바꿈
+const CHUNK_COLORS := {
+	"ADB18A": Color(0.49, 0.69, 0.41),  # 풀 윗면
+	"C9B99C": Color(0.86, 0.80, 0.60),  # 모래
+	"A29891": Color(0.55, 0.55, 0.58),  # 바위 벽
+	"998793": Color(0.47, 0.40, 0.32),  # 흙
+}
+
+
+## 덩어리 .glb 에는 법선(빛 받는 방향)이 없어 하얗게 번쩍이고 줄무늬가 생김 → 면마다 법선을 새로 만들고 섬 색으로 칠함
+func _fix_chunk_meshes(n: Node, inland: bool) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		var out := ArrayMesh.new()
+		for i in range(mi.mesh.get_surface_count()):
+			var st := SurfaceTool.new()
+			st.create_from(mi.mesh, i)
+			st.deindex()
+			st.generate_normals()
+			st.commit(out)
+		mi.mesh = out
+		var key := str(mi.name).right(6)
+		if inland and key == "C9B99C":
+			key = "ADB18A"
+		if CHUNK_COLORS.has(key):
+			mi.material_override = get_color_material(CHUNK_COLORS[key])
+	for c in n.get_children():
+		_fix_chunk_meshes(c, inland)
+
+
 ## UI 아이콘 그림 (assets/ui/<id>.png). 없으면 null → 글자만 보여 줌
 const UI_DIR := "res://assets/ui/"
 ## 병과별 기술 아이콘

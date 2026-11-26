@@ -88,7 +88,9 @@ static func sea_side(tiles: Dictionary, cell: Vector2i) -> int:
 ## 칸들을 그려서 parent 아래에 붙입니다.
 ## tiles: Vector2i -> 높이, step: 한 단 높이(m), stair_faces: "x,z|x,z" 키 사전(계단 자리에는 절벽 벽을 안 붙임)
 ## colors: 칸 -> 상자 색 (지형 조각이 없을 때 쓰는 원래 색)
-static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: Dictionary, colors: Dictionary) -> void:
+## all_tiles: 모양 판정에 쓰는 전체 섬 높이표 (그리지 않는 칸 = 지형 덩어리 칸도 이웃으로 봄). 비우면 tiles 와 같음
+static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: Dictionary, colors: Dictionary, all_tiles: Dictionary = {}) -> void:
+	var nb: Dictionary = all_tiles if not all_tiles.is_empty() else tiles
 	var use_kit := Assets.has_terrain_kit()
 	var use_wall := Assets.has_custom_model("terrace")
 	for cell in tiles.keys():
@@ -97,12 +99,12 @@ static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: D
 		var piece: Node3D = null
 		var kind := "flat"
 		if use_kit:
-			var shape := classify(tiles, cell, stair_faces)
+			var shape := classify(nb, cell, stair_faces)
 			kind = str(shape["kind"])
 			var turn := int(shape["turn"])
 			# 바다 쪽이 딱 한 면일 때만 해변 (모서리·곶은 원래 조각으로)
 			if h == 1 and kind == "edge" and Assets.has_terrain_kind("beach"):
-				var s := sea_side(tiles, cell)
+				var s := sea_side(nb, cell)
 				if s >= 0:
 					kind = "beach"
 					turn = s
@@ -125,7 +127,7 @@ static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: D
 			mi.position = Vector3(cell.x, col_h * 0.5, cell.y)
 			parent.add_child(mi)
 		if use_wall and kind != "beach":  # 해변은 모래 경사라 벽을 안 붙임
-			_add_walls(parent, tiles, cell, step, stair_faces)
+			_add_walls(parent, nb, cell, step, stair_faces)
 
 
 ## 절벽 면마다 테라스(벽) 모델을 한 단씩 쌓음. 바다 쪽은 수면(높이 0)까지.

@@ -20,12 +20,18 @@ const GRASS := Color(0.49, 0.69, 0.41)
 const SAND := Color(0.86, 0.80, 0.60)
 const ROCK := Color(0.55, 0.55, 0.58)
 const TerrainBuilder := preload("res://scripts/island/terrain_builder.gd")
+const TerrainChunks := preload("res://scripts/island/terrain_chunks.gd")
 const DIRS4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 var tiles: Dictionary = {}
 var stairs: Dictionary = {}
 var blocked: Dictionary = {}
 var house_cells: Array[Vector2i] = []
+## 지형 덩어리가 놓인 자리: 칸 -> true (높이를 덩어리 모델에 맞춰 고정, 바꾸지 않음)
+var locked: Dictionary = {}
+## 놓인 덩어리 목록: {"name", "anchor": Vector2i, "turn": 0~3}
+var chunks: Array = []
+var _cut_off: Dictionary = {}  # 길과 끊겨 지워진 덩어리 칸
 
 var _rng := RandomNumberGenerator.new()
 
@@ -37,6 +43,9 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 	stairs.clear()
 	blocked.clear()
 	house_cells.clear()
+	locked.clear()
+	chunks.clear()
+	_cut_off.clear()
 	_rng.seed = seed_value
 
 	var noise := FastNoiseLite.new()
@@ -60,7 +69,9 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 			tiles[Vector2i(x, z)] = h
 
 	_smooth_plateaus()
+	_stamp_chunks()
 	_connect_with_stairs()
+	_drop_cut_off_chunks()
 	_place_rocks(radius / 2 + 1)
 	_build_tiles()
 	_place_houses(house_count)
@@ -132,6 +143,142 @@ func get_beach_cells() -> Array[Vector2i]:
 		if int(tiles[c]) == 1 and not blocked.has(c):
 			result.append(c)
 	return result
+
+
+# ================================================================ 지형 덩어리 (만, 곶, 고개, 층단, 협곡)
+
+## 덩어리 모델의 칸 높이를 섬에 찍습니다. 바닷가용 1개 + (섬이 크면) 안쪽용 1개.
+func _stamp_chunks() -> void:
+	var defs := TerrainChunks.defs(step_height)
+	if defs.is_empty():
+		return
+	var coastal: Array = defs.keys().filter(func(k): return defs[k]["kind"] == "coastal")
+	var inland: Array = defs.keys().filter(func(k): return defs[k]["kind"] == "inland")
+	if not coastal.is_empty() and radius >= 5 and _rng.randf() < 0.75:
+		_try_coastal(coastal[_rng.randi_range(0, coastal.size() - 1)], defs)
+	if not inland.is_empty() and radius >= 7:
+		_try_inland(inland[_rng.randi_range(0, inland.size() - 1)], defs)
+
+
+## 바닷가 덩어리: 섬 중심에서 동서남북 중 한쪽 끝에 놓고, 앞쪽(-Z)이 바다를 보게 돌림
+func _try_coastal(chunk_name: String, defs: Dictionary) -> void:
+	var half: int = defs[chunk_name]["half"]
+	var turns := [0, 1, 2, 3]
+	_shuffle(turns)
+	for k in turns:
+		var out := TerrainChunks.rotate_cell(Vector2i(0, -1), k)  # 앞쪽이 가리키는 방향
+		var side := Vector2i(-out.y, out.x)
+		var spread := maxi(0, radius - half - 1)
+		var offsets: Array = range(-spread, spread + 1)
+		_shuffle(offsets)
+		for j in offsets:
+			var anchor: Vector2i = out * (radius - half) + side * j
+			if _chunk_fits(chunk_name, anchor, k, defs, true):
+				_stamp(chunk_name, anchor, k, defs)
+				return
+
+
+## 안쪽 덩어리: 섬 안에 통째로 들어가는 자리
+func _try_inland(chunk_name: String, defs: Dictionary) -> void:
+	var cands: Array = tiles.keys()
+	_shuffle(cands)
+	for anchor in cands:
+		var k := _rng.randi_range(0, 3)
+		if _chunk_fits(chunk_name, anchor, k, defs, false):
+			_stamp(chunk_name, anchor, k, defs)
+			return
+
+
+func _chunk_fits(chunk_name: String, anchor: Vector2i, k: int, defs: Dictionary, coastal: bool) -> bool:
+	var cells: Dictionary = defs[chunk_name]["cells"]
+	for local in cells.keys():
+		var c: Vector2i = anchor + TerrainChunks.rotate_cell(local, k)
+		if locked.has(c):
+			return false
+		# 덩어리 둘레 한 칸도 다른 덩어리와 겹치지 않게
+		for d in DIRS4:
+			if locked.has(c + d):
+				return false
+		if not coastal and not tiles.has(c):
+			return false
+	if coastal:
+		# 덩어리 뒤쪽(+Z 줄)은 섬 땅과 이어져야 함
+		var half: int = defs[chunk_name]["half"]
+		var back := 0
+		for x in range(-half, half + 1):
+			var behind: Vector2i = anchor + TerrainChunks.rotate_cell(Vector2i(x, half + 1), k)
+			if tiles.has(behind):
+				back += 1
+		return back >= half + 1
+	return true
+
+
+func _stamp(chunk_name: String, anchor: Vector2i, k: int, defs: Dictionary) -> void:
+	var cells: Dictionary = defs[chunk_name]["cells"]
+	var before := {}  # 덩어리를 다시 빼야 할 때를 위해 원래 높이 기억
+	for local in cells.keys():
+		var c: Vector2i = anchor + TerrainChunks.rotate_cell(local, k)
+		before[c] = tiles.get(c, 0)
+		var h: int = cells[local]
+		if h <= 0:
+			tiles.erase(c)
+		else:
+			tiles[c] = h
+		locked[c] = true
+	chunks.append({"name": chunk_name, "anchor": anchor, "turn": k, "before": before})
+	# 덩어리 둘레 땅을 덩어리 높이와 1단 차이 이내로 맞춤 (계단으로 이어질 수 있게)
+	for _pass in range(2):
+		for c in before.keys():
+			if not tiles.has(c):
+				continue
+			for d in DIRS4:
+				var n: Vector2i = c + d
+				if locked.has(n) or not tiles.has(n):
+					continue
+				var hc := int(tiles[c])
+				var hn := int(tiles[n])
+				if hn > hc + 1:
+					tiles[n] = hc + 1
+				elif hn < hc - 1:
+					tiles[n] = hc - 1
+
+
+## 덩어리마다 꼭 필요한 계단 (예: 고개 가운데 통로)
+func _add_pass_stairs() -> void:
+	for ch in chunks:
+		for pair in TerrainChunks.PASS_STAIRS.get(ch["name"], []):
+			var a: Vector2i = ch["anchor"] + TerrainChunks.rotate_cell(pair[0], ch["turn"])
+			var b: Vector2i = ch["anchor"] + TerrainChunks.rotate_cell(pair[1], ch["turn"])
+			if tiles.has(a) and tiles.has(b) and absi(int(tiles[a]) - int(tiles[b])) == 1:
+				stairs[edge_key(a, b)] = true
+
+
+## 계단으로도 이어지지 못한 덩어리는 빼고(원래 땅으로 되돌림) 다시 연결합니다.
+## 덩어리 모델과 실제 이동 칸이 어긋나지 않게 하기 위함.
+func _drop_cut_off_chunks() -> void:
+	if _cut_off.is_empty():
+		return
+	var keep: Array = []
+	for ch in chunks:
+		var cut := false
+		for c in ch["before"].keys():
+			if _cut_off.has(c):
+				cut = true
+				break
+		if not cut:
+			keep.append(ch)
+			continue
+		for c in ch["before"].keys():
+			locked.erase(c)
+			var h: int = ch["before"][c]
+			if h > 0:
+				tiles[c] = h
+			else:
+				tiles.erase(c)
+	chunks = keep
+	_cut_off.clear()
+	_connect_with_stairs()
+	_cut_off.clear()  # 남은 덩어리는 이미 이어져 있었음
 
 
 # ================================================================ 지형 다듬기
@@ -221,19 +368,25 @@ func _connect_with_stairs() -> void:
 		# 고리 몇 개 (길이 하나뿐이면 너무 답답하므로)
 		for p in extra:
 			if _rng.randf() < 0.3:
-				_add_stair(p["edges"])
+				# 덩어리 안쪽끼리는 고리 계단을 더 놓지 않음 (계단이 너무 몰려 보임)
+				var outside: Array = p["edges"].filter(func(e): return not (locked.has(e[0]) and locked.has(e[1])))
+				if not outside.is_empty():
+					_add_stair(outside)
+		_add_pass_stairs()
 		# 모두 이어졌는지 확인, 안 이어진 고원은 한 단 낮춰서 다시 시도
 		var reach := _flood(_center_cell())
 		var unreached: Array = tiles.keys().filter(func(c): return not reach.has(c))
 		if unreached.is_empty():
 			return
 		for c in unreached:
-			if int(tiles[c]) > 1:
+			if int(tiles[c]) > 1 and not locked.has(c):
 				tiles[c] = int(tiles[c]) - 1
 	# 그래도 못 가는 칸은 바다로
 	var reach_final := _flood(_center_cell())
 	for c in tiles.keys():
 		if not reach_final.has(c):
+			if locked.has(c):
+				_cut_off[c] = true
 			tiles.erase(c)
 
 
@@ -314,7 +467,20 @@ func _build_tiles() -> void:
 			color = GRASS.darkened(0.12)
 		colors[cell] = color
 	# 그리기만 terrain_builder 가 맡음. 이동 규칙(tiles·stairs)은 그대로.
-	TerrainBuilder.build(self, tiles, step_height, stairs, colors)
+	var plain := {}
+	for cell in tiles.keys():
+		if not locked.has(cell):
+			plain[cell] = tiles[cell]
+	TerrainBuilder.build(self, plain, step_height, stairs, colors, tiles)
+	# 지형 덩어리 모델 (칸 높이는 이미 모델에 맞춰 찍혀 있음)
+	for ch in chunks:
+		var m := Assets.get_chunk_model(str(ch["name"]), str(TerrainChunks.USE.get(ch["name"], "")) == "inland")
+		if m == null:
+			continue
+		var a: Vector2i = ch["anchor"]
+		m.position = Vector3(a.x * tile_size, 0.0, a.y * tile_size)
+		m.rotation.y = int(ch["turn"]) * PI * 0.5
+		add_child(m)
 	for cell in blocked.keys():
 		var rock := Assets.get_model("rock")
 		rock.position = cell_to_world(cell)
