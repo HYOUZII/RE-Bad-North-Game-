@@ -106,9 +106,36 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 
 ChatGPT에 "이 그림대로 Blender 파이썬 스크립트로 로우폴리 모델을 만들어 줘"라고 시키는 방법도 있지만, 결과 품질은 들쭉날쭉합니다.
 
-## 2D 병사 그림 (8방향 스프라이트)
+## 움직이는 3D 병사 (뼈대 + 동작)
 
-3D 병사 모델 대신 `assets/sprites/` 의 8방향 그림을 쓸 수 있습니다. 병사 .glb가 있으면 .glb가 먼저입니다.
+병사는 지금 **뼈대(리깅)와 동작(애니메이션)이 들어 있는 3D 캐릭터**로 그립니다. 걷기·뛰기·공격·맞음·막기·쓰러짐 동작이 섞여서(블렌딩) 자연스럽게 이어집니다.
+
+- 임시 캐릭터: `assets/characters/kaykit/` 의 무료 캐릭터(KayKit Adventurers, 제작 Kay Lousberg, **CC0** = 상업용 포함 자유 사용, 출처 표기 의무 없음. `LICENSE.txt` 참고).
+  아군 = 기사(Knight)·두건 도적(Rogue_Hooded), 적 = 야만전사(Barbarian)·도적(Rogue)을 붉게 물들여 씀.
+- 어떤 병사가 어떤 캐릭터·무기·동작을 쓰는지: `scripts/core/asset_library.gd` 의 `RIGS`(캐릭터·장비·색), `RIG_ANIMS`(동작 이름) 표.
+- 동작을 움직이는 코드: `scripts/core/rig_actor.gd`. 시간은 전투가 넘겨 주므로 일시정지·슬로모션 때 동작도 같이 멈춥니다.
+
+**내 캐릭터로 바꾸기 (Mixamo 추천)**
+1. Meshy/Tripo로 만든 병사 모델(.fbx 또는 .obj)을 [mixamo.com](https://www.mixamo.com)에 올리면 자동으로 뼈대를 심어 줍니다(무료, Adobe 계정 필요).
+2. 아래 동작을 골라 같은 캐릭터로 내려받습니다(In Place 체크). 이름에 이 단어가 들어 있으면 게임이 알아서 찾습니다.
+   | 동작 | 이름에 들어갈 단어 (하나) |
+   |---|---|
+   | 서 있기 | `idle` |
+   | 걷기 / 뛰기 | `walk` / `run` |
+   | 공격 | `attack`, `slash`, `stab`, `swing` |
+   | 활 겨누기 / 쏘기 | `aim` / `shoot` |
+   | 맞음 / 방패로 막기 | `hit` / `block` |
+   | 쓰러짐 | `death`, `die` |
+   | 환호(이겼을 때) | `cheer`, `victory` |
+3. Blender에서 동작들을 한 파일로 합쳐 `.glb`로 내보내고 `assets/models/<병사 id>.glb`(예: `infantry.glb`)로 넣습니다. 앞쪽은 -Z.
+4. 끝. 파일에 동작이 들어 있으면 자동으로 움직이는 병사가 되고, 크기는 위 표 크기에 맞춰집니다.
+   공격 동작의 "칼이 닿는 순간"을 정확히 맞추고 싶으면 `rig_actor.gd`의 `IMPACT` 표에 동작 이름과 초를 적어 주세요(없으면 동작 길이의 40% 지점으로 봄).
+
+찾는 순서: `assets/models/<id>.glb` → `assets/characters/` 3D 캐릭터 → `assets/sprites/` 2D 그림 → 임시 도형.
+
+## 2D 병사 그림 (8방향 스프라이트, 예전 방식)
+
+3D 캐릭터 대신 `assets/sprites/` 의 8방향 그림을 쓸 수 있습니다(위 3D 캐릭터 파일이 없을 때만). 병사 .glb가 있으면 .glb가 먼저입니다.
 
 - 그림 한 장 = 가로 14칸 × 세로 8줄, 한 칸 144px. 줄 = 보는 방향(정면, 오른쪽 앞, 오른쪽, … 왼쪽 앞), 칸 0~3 서기, 4~9 공격, 10~13 맞음.
 - 파일 이름: `ally-sword|bow|spear-basic|veteran|elite.png`, `enemy-sword|bow|spear-...png`
