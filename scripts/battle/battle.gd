@@ -171,7 +171,7 @@ func can_melee(a: Vector3, b: Vector3) -> bool:
 
 
 func cell_center(cell: Vector2i) -> Vector3:
-	return Vector3(cell.x, height_steps(cell) * island.step_height, cell.y)
+	return Vector3(cell.x, island.level_y(height_steps(cell)), cell.y)
 
 
 func house_at(cell: Vector2i):
@@ -1056,7 +1056,7 @@ func _pick_cell(screen_pos: Vector2) -> Vector2i:
 	var best := NO_CELL
 	var best_d := INF
 	for c in island.tiles.keys():
-		var h: float = height_steps(c) * island.step_height
+		var h: float = island.level_y(height_steps(c))
 		var box := AABB(Vector3(c.x - 0.5, 0.0, c.y - 0.5), Vector3(1.0, h, 1.0))
 		var hit = box.intersects_ray(from, dir)
 		if hit != null:
@@ -1181,31 +1181,34 @@ func _spawn_dots(pts: Array, model_id: String) -> void:
 
 
 func _setup_world() -> void:
-	# 분위기: 옅은 청회색 하늘과 안개, 부드러운 빛 (색 수를 줄인 파스텔 톤)
+	# 분위기: 차분한 회녹색 하늘과 안개, 눈부시지 않은 부드러운 빛 (채도·밝기를 낮춘 톤)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.71, 0.79, 0.81)
+	env.background_color = Color(0.56, 0.62, 0.62)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.78, 0.82, 0.88)
-	env.ambient_light_energy = 0.4
+	env.ambient_light_color = Color(0.70, 0.75, 0.78)
+	env.ambient_light_energy = 0.32
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_white = 1.4
+	env.tonemap_exposure = 0.92
+	env.tonemap_white = 2.2   # 클수록 밝은 곳이 하얗게 날아가지 않음
 	# 구석·절벽 아래를 살짝 어둡게 (Forward+ 렌더러에서만 동작, 아니면 무시됨)
 	env.ssao_enabled = true
 	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.6
+	env.ssao_intensity = 1.8
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.71, 0.79, 0.81)
-	env.fog_density = 0.005
+	env.fog_light_color = Color(0.56, 0.62, 0.62)
+	env.fog_density = 0.006
 	env.fog_sky_affect = 0.0
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 0.9
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(-150), 0)  # 화면 뒤쪽 왼편에서 비춰서 앞쪽 절벽 면에 그늘이 지게
-	sun.light_energy = 1.1
-	sun.light_color = Color(1.0, 0.97, 0.92)
+	sun.light_energy = 0.95
+	sun.light_color = Color(1.0, 0.96, 0.90)
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.5
 	add_child(sun)
@@ -1215,8 +1218,8 @@ func _setup_world() -> void:
 	plane.size = Vector2(200, 200)
 	sea.mesh = plane
 	var sea_mat := StandardMaterial3D.new()
-	sea_mat.albedo_color = Color(0.45, 0.58, 0.63)
-	sea_mat.roughness = 0.25
+	sea_mat.albedo_color = Color(0.36, 0.47, 0.50)
+	sea_mat.roughness = 0.7   # 낮으면 햇빛이 물에 하얗게 번쩍임
 	sea.material_override = sea_mat
 	sea.position.y = 0.02
 	sea.name = "Sea"

@@ -56,8 +56,17 @@ ChatGPT (컨셉 아트) → Meshy / Tripo / Blender (3D 변환) → assets/model
 | `tent.glb` | 본 섬 지휘관 천막(지휘관마다 하나) | 지름 0.64 × 0.5 |
 | `commander.glb` | 지휘관(전투에서는 분대장, 본 섬에서는 천막 앞) | 0.4 × 0.55 × 0.4 |
 | `terrace.glb` | 절벽 벽 한 단(높이 차이가 나는 칸 사이, 바닷가 절벽). 앞쪽 -Z가 바깥(낮은 쪽) | 1.0 × 0.5 × 0.12 (늘려 맞춤) |
+| `rock_kit/cliff_01.glb` … | 곧은 절벽 한 단 (번호를 붙여 여러 개). **만드는 법은 [TERRAIN_KIT.md](TERRAIN_KIT.md)** | 1.0 × 1.0 × 0.45 (늘려 맞춤) |
+| `rock_kit/cliff_tall_01.glb` … | 곧은 절벽 두 단 | 1.0 × 2.0 × 0.45 (늘려 맞춤) |
+| `rock_kit/cliff_corner_out_01.glb` | 튀어나온 모서리를 비스듬히 깎은 면 | 0.71 × 1.0 × 0.45 (늘려 맞춤) |
+| `rock_kit/cliff_corner_in_01.glb` | 파인 모서리를 비스듬히 잇는 면 | 0.71 × 1.0 × 0.45 (늘려 맞춤) |
+| `rock_kit/shore_rock_01.glb` … | 바닷가 낮은 땅 가장자리 바위턱 | 1.0 × 0.65 × 0.45 (늘려 맞춤) |
 
-## 지형 조각 (섬 타일)
+## 지형 조각 (섬 타일) — 지금은 안 씀
+
+> 2026-11-26부터 섬은 "윗면은 코드로 한 장 + 절벽은 바위 조각(rock_kit)" 방식으로 그립니다.
+> 아래 칸 타일 방식은 `terrain_builder.gd` 의 `STYLE = "pieces"` 로 바꿀 때만 쓰입니다.
+> 새로 만들 지형 모델은 [TERRAIN_KIT.md](TERRAIN_KIT.md)를 보세요.
 
 `assets/models/terrain/` 폴더에 넣으면 전투 섬과 본 섬 타일이 자동으로 바뀝니다. 없으면 지금처럼 상자 타일입니다.
 

@@ -14,9 +14,10 @@ extends Node3D
 ##   양쪽 입구와 같은 높이로 걸어 지나갑니다(이동 규칙은 그대로). 지붕은 그림일 뿐 위로는 못 걷습니다.
 
 @export var radius: int = 10
-@export var max_height: int = 4
+@export var max_height: int = 3       # 땅 높이 단계 수 (1 = 바닷가 낮은 땅, 2·3 = 절벽 위 고원)
 @export var tile_size: float = 1.0
-@export var step_height: float = 0.8  # 높이 1단계당 실제 높이(m). 절벽이 웅장해 보이도록 0.5 → 0.8
+@export var step_height: float = 1.0  # 절벽 한 단의 높이(m). 단 수를 줄인 대신 절벽 하나하나를 높게
+@export var level_base: float = 0.3   # 높이 1(바닷가 땅)의 높이(m). 물 바로 위에 낮게 깔린 땅
 
 const GRASS := Color(0.49, 0.69, 0.41)
 const SAND := Color(0.86, 0.80, 0.60)
@@ -44,28 +45,9 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 	house_cells.clear()
 	_rng.seed = seed_value
 
-	var noise := FastNoiseLite.new()
-	noise.seed = seed_value
-	noise.frequency = 0.11
-	var shape := FastNoiseLite.new()
-	shape.seed = seed_value + 77
-	shape.frequency = 0.12
-
-	for x in range(-radius, radius + 1):
-		for z in range(-radius, radius + 1):
-			# 해안선을 울퉁불퉁하게: 거리에 노이즈를 섞음
-			var d := Vector2(x, z).length() / float(radius) + shape.get_noise_2d(x, z) * 0.18
-			if d > 1.0:
-				continue
-			var n := (noise.get_noise_2d(x, z) + 1.0) * 0.5  # 0~1
-			var v := n * 1.25 - d * d * 0.9 + 0.35
-			var h := clampi(int(round(v * max_height)), 1, max_height)
-			if d > 0.9:
-				h = 1  # 바깥 테두리는 낮은 땅(상륙 가능한 해변)
-			tiles[Vector2i(x, z)] = h
-
+	_make_layout(seed_value)
 	_smooth_plateaus()
-	_carve_caves(2)
+	_carve_caves(1 + (1 if _rng.randf() < 0.35 else 0))
 	_connect_with_stairs()
 	_check_caves()
 	_place_rocks(radius / 2 + 1)
@@ -73,6 +55,196 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 	_place_houses(house_count)
 	_place_trees(4 + radius / 2)
 	_place_bushes()
+
+
+# ================================================================ 섬 모양 (배치)
+## 섬 모양 만들기. 칸 하나하나를 따로 정하지 않고 "덩어리"로 정합니다.
+##   1) 땅/바다: 둥근 모양을 노이즈로 비틀고, 주변 칸 다수결로 다듬어 해안선을 매끈하게
+##   2) 고원(높이 2): 섬 가운데 쪽 + 큰 노이즈 점수가 높은 칸의 절반쯤. 가는 띠·한 칸 홈은 지움
+##   3) 봉우리(높이 3): 고원 안에서 다시 점수가 높은 칸 일부
+## 높이는 1~3 세 단뿐이라 계단식 등고선처럼 보이지 않고, 넓은 평지 + 높은 절벽이 됩니다.
+func _make_layout(seed_value: int) -> void:
+	var warp := FastNoiseLite.new()
+	warp.seed = seed_value + 11
+	warp.frequency = 0.09
+	var shape := FastNoiseLite.new()
+	shape.seed = seed_value + 77
+	shape.frequency = 0.09
+	var hill := FastNoiseLite.new()
+	hill.seed = seed_value
+	hill.frequency = 0.075
+	var coast := FastNoiseLite.new()
+	coast.seed = seed_value + 303
+	coast.frequency = 0.1
+	var r := float(radius)
+	# 1) 땅/바다
+	var land := {}
+	for x in range(-radius - 2, radius + 3):
+		for z in range(-radius - 2, radius + 3):
+			var p := Vector2(x, z)
+			var w := Vector2(warp.get_noise_2d(x, z), warp.get_noise_2d(x + 97.0, z - 61.0)) * 4.0
+			# 각도마다 반지름을 다르게 해서 곶과 만이 생기게 (원·팔각형처럼 보이지 않게)
+			var ang := atan2(float(z), float(x))
+			var lobes := sin(ang * 3.0 + float(seed_value % 7)) * 0.12 + sin(ang * 5.0 + float(seed_value % 11)) * 0.07
+			var d := (p + w).length() / r * (1.0 - lobes) + shape.get_noise_2d(x, z) * 0.3
+			if d < 0.9:
+				land[Vector2i(x, z)] = true
+	land = _majority(land, 3, {})
+	land = _largest_part(land)
+	land = _fill_holes(land)
+	# 2) 고원 점수: 가운데일수록 + 큰 언덕 노이즈
+	var score := {}
+	for c in land.keys():
+		var centr := 1.0 - Vector2(c).length() / r
+		score[c] = centr * 0.8 + hill.get_noise_2d(c.x, c.y) * 0.7
+	# 바닷가 한 칸 띠는 대부분 낮은 땅으로 남김(배가 댈 곳). 일부(coast 노이즈가 큰 곳)만 바다 절벽 허용
+	var inner := _erode(land)
+	var allow2 := {}
+	for c in land.keys():
+		if inner.has(c) or coast.get_noise_2d(c.x, c.y) > 0.3:
+			allow2[c] = true
+	var lv2 := _top_share(score, allow2, 0.5)
+	lv2 = _majority(lv2, 2, allow2)
+	lv2 = _open_close(lv2, allow2)
+	# 3) 봉우리: 고원 안 점수 상위. 고원 가장자리에 붙으면 2단 높이 큰 절벽이 생김
+	var lv3 := _top_share(score, lv2, 0.38)
+	lv3 = _majority(lv3, 2, lv2)
+	lv3 = _open_close(lv3, lv2)
+	for c in land.keys():
+		var h := 1
+		if lv2.has(c):
+			h = 2
+			if lv3.has(c) and max_height >= 3:
+				h = 3
+		tiles[c] = h
+
+
+## 점수 상위 share 비율의 칸 (allowed 안에서만)
+func _top_share(score: Dictionary, allowed: Dictionary, share: float) -> Dictionary:
+	var cells: Array = allowed.keys()
+	if cells.is_empty():
+		return {}
+	cells.sort_custom(func(a, b): return float(score.get(a, -9.0)) > float(score.get(b, -9.0)))
+	var out := {}
+	for i in range(int(round(cells.size() * share))):
+		out[cells[i]] = true
+	return out
+
+
+## 주변 8칸 다수결로 모양 다듬기 (튀어나온 한 칸, 파인 한 칸이 사라짐). allowed 가 비어 있지 않으면 그 안에서만 땅
+func _majority(mask: Dictionary, passes: int, allowed: Dictionary) -> Dictionary:
+	var m := mask
+	for _i in range(passes):
+		var lo := Vector2i(1 << 20, 1 << 20)
+		var hi := Vector2i(-(1 << 20), -(1 << 20))
+		for c in m.keys():
+			lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+			hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+		var out := {}
+		for x in range(lo.x - 1, hi.x + 2):
+			for z in range(lo.y - 1, hi.y + 2):
+				var c := Vector2i(x, z)
+				var n := 0
+				for dx in [-1, 0, 1]:
+					for dz in [-1, 0, 1]:
+						if (dx != 0 or dz != 0) and m.has(Vector2i(x + dx, z + dz)):
+							n += 1
+				var on := m.has(c)
+				if n >= 5:
+					on = true
+				elif n <= 3:
+					on = false
+				if on and (allowed.is_empty() or allowed.has(c)):
+					out[c] = true
+		m = out
+	return m
+
+
+## 한 칸 깎기: 상하좌우가 모두 안쪽인 칸만 남김
+func _erode(mask: Dictionary) -> Dictionary:
+	var out := {}
+	for c in mask.keys():
+		var ok := true
+		for d in DIRS4:
+			if not mask.has(c + d):
+				ok = false
+				break
+		if ok:
+			out[c] = true
+	return out
+
+
+## 한 칸 넓히기 (allowed 안에서만)
+func _dilate(mask: Dictionary, allowed: Dictionary) -> Dictionary:
+	var out := mask.duplicate()
+	for c in mask.keys():
+		for d in DIRS4:
+			var n: Vector2i = c + d
+			if allowed.has(n):
+				out[n] = true
+	return out
+
+
+## 열기(깎고 넓히기: 두 칸보다 가는 띠 제거) → 닫기(넓히고 깎기: 한 칸짜리 홈 메움)
+func _open_close(mask: Dictionary, allowed: Dictionary) -> Dictionary:
+	var m := _dilate(_erode(mask), allowed)
+	var closed := _erode(_dilate(m, allowed))
+	# 닫기 때 allowed 바깥 경계에서 깎인 칸은 되살림
+	for c in m.keys():
+		closed[c] = true
+	return closed
+
+
+## 가장 큰 덩어리만 남김 (떨어진 작은 섬 제거)
+func _largest_part(mask: Dictionary) -> Dictionary:
+	var seen := {}
+	var best := {}
+	for start in mask.keys():
+		if seen.has(start):
+			continue
+		var part := {start: true}
+		seen[start] = true
+		var stack: Array[Vector2i] = [start]
+		while not stack.is_empty():
+			var c: Vector2i = stack.pop_back()
+			for d in DIRS4:
+				var n: Vector2i = c + d
+				if mask.has(n) and not seen.has(n):
+					seen[n] = true
+					part[n] = true
+					stack.append(n)
+		if part.size() > best.size():
+			best = part
+	return best
+
+
+## 땅으로 둘러싸인 호수(바깥 바다와 안 이어진 물)는 땅으로 메움
+func _fill_holes(mask: Dictionary) -> Dictionary:
+	var lo := Vector2i(1 << 20, 1 << 20)
+	var hi := Vector2i(-(1 << 20), -(1 << 20))
+	for c in mask.keys():
+		lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+		hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	lo -= Vector2i(1, 1)
+	hi += Vector2i(1, 1)
+	var sea := {lo: true}
+	var stack: Array[Vector2i] = [lo]
+	while not stack.is_empty():
+		var c: Vector2i = stack.pop_back()
+		for d in DIRS4:
+			var n: Vector2i = c + d
+			if n.x < lo.x or n.y < lo.y or n.x > hi.x or n.y > hi.y:
+				continue
+			if not mask.has(n) and not sea.has(n):
+				sea[n] = true
+				stack.append(n)
+	var out := mask.duplicate()
+	for x in range(lo.x, hi.x + 1):
+		for z in range(lo.y, hi.y + 1):
+			var c := Vector2i(x, z)
+			if not sea.has(c):
+				out[c] = true
+	return out
 
 
 # ================================================================ 이동 규칙 (길찾기에서 사용)
@@ -100,10 +272,17 @@ func can_cross(a: Vector2i, b: Vector2i) -> bool:
 	return has_stairs(a, b)
 
 
+## 높이 단계 → 실제 높이(m). 높이 1은 물 바로 위(level_base), 그 위로 한 단마다 step_height.
+func level_y(h: float) -> float:
+	if h <= 0.0:
+		return 0.0
+	return level_base + (h - 1.0) * step_height
+
+
 ## 격자 좌표 -> 월드 좌표 (타일 윗면 중앙)
 func cell_to_world(cell: Vector2i) -> Vector3:
 	var h: int = tiles.get(cell, 0)
-	return Vector3(cell.x * tile_size, h * step_height, cell.y * tile_size)
+	return Vector3(cell.x * tile_size, level_y(h), cell.y * tile_size)
 
 
 ## 실제 지면 높이. 계단이 있는 칸은 계단 쪽으로 갈수록 경사를 따라 올라갑니다.
@@ -119,7 +298,7 @@ func ground_height(p: Vector3) -> float:
 			var t: float = (p.x - c.x) * d.x + (p.z - c.y) * d.y
 			if t > 0.0:
 				h += (float(int(tiles[n])) - h) * clamp(t / 0.5, 0.0, 1.0)
-	return h * step_height
+	return level_y(h)
 
 
 ## 바다와 맞닿은 칸
@@ -232,6 +411,11 @@ func _connect_with_stairs() -> void:
 		for p in extra:
 			if _rng.randf() < 0.3:
 				_add_stair(p["edges"])
+		# 경계가 긴 고원 사이에는 계단을 더 놓음 (한 군데만 있으면 너무 멀리 돌아가야 함)
+		for p in pairs:
+			var edges: Array = p["edges"]
+			for _k in range(edges.size() / 10):
+				_add_stair_far(edges)
 		# 모두 이어졌는지 확인, 안 이어진 고원은 한 단 낮춰서 다시 시도
 		var reach := _flood(_center_cell())
 		var unreached: Array = tiles.keys().filter(func(c): return not reach.has(c))
@@ -264,7 +448,7 @@ func _carve_caves(max_count: int) -> void:
 				if h == floor_h and run.size() > 0:
 					ok = true
 					break
-				if h < floor_h + 2:
+				if h < floor_h + 1:
 					break
 				var side := Vector2i(d.y, d.x)
 				if int(tiles.get(c + side, 0)) <= floor_h or int(tiles.get(c - side, 0)) <= floor_h:
@@ -287,7 +471,8 @@ func _carve_caves(max_count: int) -> void:
 		if clash:
 			continue
 		for c in run:
-			caves[c] = int(tiles[c])  # 원래 높이 = 지붕 높이
+			# 지붕 높이: 원래 높이. 한 단 높은 고원을 뚫을 때는 지붕을 한 단 더 올려 바위 다리(아치)처럼 보이게
+			caves[c] = maxi(int(tiles[c]), int(f["floor"]) + 2)
 			tiles[c] = int(f["floor"])  # 걷는 높이 = 입구 높이
 		made += 1
 
@@ -338,6 +523,24 @@ func _near_cave(c: Vector2i) -> bool:
 		if caves.has(c + d):
 			return true
 	return false
+
+
+## 이미 놓인 계단에서 가장 먼 경계에 계단 하나 더
+func _add_stair_far(edges: Array) -> void:
+	var best: Array = []
+	var best_d := -1.0
+	for e in edges:
+		var d := INF
+		for key in stairs.keys():
+			var parts: PackedStringArray = str(key).split("|")
+			var q := _parse_cell(parts[0])
+			d = minf(d, Vector2(e[0] - q).length())
+		if d > best_d:
+			best_d = d
+			best = e
+	if best.is_empty() or best_d < 4.0:
+		return
+	stairs[edge_key(best[0], best[1])] = true
 
 
 func _add_stair(edges: Array) -> void:
@@ -417,7 +620,7 @@ func _build_tiles() -> void:
 			color = GRASS.darkened(0.12)
 		colors[cell] = color
 	# 그리기만 terrain_builder 가 맡음. 이동 규칙(tiles·stairs)은 그대로.
-	TerrainBuilder.build(self, tiles, step_height, stairs, colors, caves)
+	TerrainBuilder.build(self, tiles, step_height, stairs, colors, caves, level_base)
 	for cell in blocked.keys():
 		var rock := Assets.get_model("rock")
 		rock.position = cell_to_world(cell)
@@ -436,7 +639,7 @@ func _build_tiles() -> void:
 		# 낮은 칸의 높은 칸 쪽 절반에 반 단짜리 디딤돌을 놓아 계단처럼 보이게 함
 		st.position = base + Vector3(dir.x * 0.25, 0.0, dir.y * 0.25)
 		st.rotation.y = atan2(-dir.x, -dir.y)
-		st.scale.y = step_height / 0.5  # 계단 모델은 한 단 0.5m 기준이라 단 높이에 맞춰 늘림
+		st.scale.y = (level_y(int(tiles[high])) - level_y(int(tiles[low]))) / 0.5  # 계단 모델은 한 단 0.5m 기준이라 단 높이에 맞춰 늘림
 		add_child(st)
 
 

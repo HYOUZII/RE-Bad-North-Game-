@@ -46,6 +46,13 @@ const PLACEHOLDERS := {
 	"commander":     {"shape": "capsule",  "size": Vector3(0.20, 0.55, 0.20), "color": Color(0.30, 0.38, 0.65)},
 	# 절벽 벽 한 단 (앞면 -Z가 낮은 쪽/바깥). 파일이 있을 때만 섬에 붙음(없으면 상자 절벽 그대로)
 	"terrace":       {"shape": "box",      "size": Vector3(1.00, 0.50, 0.12), "color": Color(0.55, 0.50, 0.44)},
+	# 절벽 바위 조각 (섬 외곽선을 따라 세움). 앞(바위 얼굴) -Z 가 바깥, 원점 = 바닥 가운데.
+	# 실제 크기는 놓을 자리에 맞춰 늘려 맞춤(get_rock_piece). 파일은 assets/models/rock_kit/<id>_01.glb 처럼 번호를 붙여 여러 개 가능
+	"cliff":            {"shape": "rock", "size": Vector3(1.00, 1.00, 0.47), "color": Color(0.70, 0.71, 0.67)},
+	"cliff_tall":       {"shape": "rock", "size": Vector3(1.00, 2.00, 0.47), "color": Color(0.70, 0.71, 0.67)},
+	"cliff_corner_out": {"shape": "rock", "size": Vector3(0.71, 1.00, 0.47), "color": Color(0.70, 0.71, 0.67)},
+	"cliff_corner_in":  {"shape": "rock", "size": Vector3(0.71, 1.00, 0.47), "color": Color(0.70, 0.71, 0.67)},
+	"shore_rock":       {"shape": "rock", "size": Vector3(1.00, 0.65, 0.47), "color": Color(0.70, 0.71, 0.67)},
 }
 
 ## .glb 모델 크기 맞춤 방법 (표에 없으면 "footprint")
@@ -318,6 +325,112 @@ func get_terrain_piece(kind: String, pick: int, step: float) -> Node3D:
 	return root
 
 
+# ================================================================ 절벽 바위 조각 (rock_kit)
+## assets/models/rock_kit/ 폴더의 .glb. 파일 이름 = 조각 id (+ 번호). 예: cliff_01.glb, cliff_02.glb, cliff_tall_01.glb
+## 조각 id 와 크기·방향 약속은 scripts/island/rock_kit.gd 맨 위, docs/TERRAIN_KIT.md 참고.
+const ROCK_KIT_DIR := "res://assets/models/rock_kit/"
+const RockKit := preload("res://scripts/island/rock_kit.gd")
+## 파일 모델에도 공용 바위 셰이더(지층 줄, 이끼, 각진 면)를 입힘. false 면 파일의 원래 색/텍스처를 씀
+const ROCK_SHADER_ON_FILES := true
+## 이 id 파일이 없을 때 대신 쓸 id (예: 두 단 절벽이 없으면 한 단 절벽을 늘려 씀)
+const ROCK_FALLBACK := {
+	"cliff_tall": "cliff",
+	"cliff_corner_out": "cliff",
+	"cliff_corner_in": "cliff",
+	"shore_rock": "cliff",
+}
+
+var _rock_files: Dictionary = {}   # id -> 파일 경로 목록
+var _rock_scanned := false
+
+
+func _scan_rock_kit() -> void:
+	if _rock_scanned:
+		return
+	_rock_scanned = true
+	var dir := DirAccess.open(ROCK_KIT_DIR)
+	if dir == null:
+		return
+	var names: Array[String] = []
+	for f in dir.get_files():
+		var name := f.trim_suffix(".remap").trim_suffix(".import")
+		if name.get_extension().to_lower() == "glb" and not (name in names):
+			names.append(name)
+	names.sort()
+	# 긴 id 부터 맞춤 ("cliff_tall_01" 이 "cliff" 로 잘못 잡히지 않게)
+	var ids: Array = RockKit.KINDS.keys()
+	ids.sort_custom(func(a, b): return str(a).length() > str(b).length())
+	for name in names:
+		var base := name.get_basename().to_lower().replace("-", "_").replace(" ", "_")
+		var found := ""
+		for id in ids:
+			var rest := base.trim_prefix(str(id))
+			if base.begins_with(str(id)) and (rest == "" or rest.begins_with("_") and rest.trim_prefix("_").is_valid_int()):
+				found = str(id)
+				break
+		if found == "":
+			push_warning("바위 조각 이름을 알아보지 못했습니다(예: cliff_01.glb): " + name)
+			continue
+		if not _rock_files.has(found):
+			_rock_files[found] = []
+		_rock_files[found].append(ROCK_KIT_DIR + name)
+	if not _rock_files.is_empty():
+		print("바위 조각: ", _rock_files.keys())
+
+
+## 바위 조각 하나. size = (가로, 높이, 앞뒤 깊이). 원점 = 바닥 가운데, 앞(-Z) = 바깥.
+## 파일이 있으면 그 크기에 맞춰 늘리고, 없으면 임시 바위를 그 크기로 만듦. pick 으로 여러 파일 중 하나를 고름
+func get_rock_piece(id: String, pick: int, size: Vector3) -> Node3D:
+	_scan_rock_kit()
+	var k := id
+	while not _rock_files.has(k) and ROCK_FALLBACK.has(k):
+		k = str(ROCK_FALLBACK[k])
+	if _rock_files.has(k):
+		var files: Array = _rock_files[k]
+		var scene := load(str(files[pick % files.size()])) as PackedScene
+		if scene != null:
+			var fitted := _fit_rock_file(scene.instantiate() as Node3D, size)
+			if fitted != null:
+				return fitted
+	return _rock_placeholder(id, pick % 4, size)
+
+
+## 파일 모델을 size 상자에 맞춤: 가로·높이는 딱 맞게, 앞뒤는 앞쪽이 FRONT_OUT 만큼만 튀어나오게
+## 파일 약속: Blender 정면 보기(숫자패드 1)에서 바위 얼굴이 보이게 만든 모델 = 파일 안에서 얼굴이 +Z.
+## 게임 안에서는 얼굴이 -Z(바깥)여야 해서 반 바퀴 돌려서 씀.
+func _fit_rock_file(model: Node3D, size: Vector3) -> Node3D:
+	var turned := Node3D.new()
+	turned.rotation.y = PI
+	turned.add_child(model)
+	var box := _mesh_bounds(turned, Transform3D.IDENTITY)
+	if box.size.x <= 0.0001 or box.size.y <= 0.0001 or box.size.z <= 0.0001:
+		turned.free()
+		return null
+	model = turned
+	var sc := Vector3(size.x * RockKit.OVERLAP / box.size.x, size.y / box.size.y, size.z / box.size.z)
+	var inner := Node3D.new()
+	inner.name = "Fit"
+	inner.scale = sc
+	# 가로 가운데, 바닥 = 0, 앞면(z 최소) = -FRONT_OUT
+	inner.position = Vector3(-box.get_center().x * sc.x, -box.position.y * sc.y, -RockKit.FRONT_OUT - box.position.z * sc.z)
+	inner.add_child(model)
+	if ROCK_SHADER_ON_FILES:
+		_paint_all(model, RockKit.rock_material())
+	var root := Node3D.new()
+	root.add_child(inner)
+	return root
+
+
+func _rock_placeholder(id: String, variant: int, size: Vector3) -> Node3D:
+	var root := Node3D.new()
+	root.name = id.capitalize()
+	var mi := MeshInstance3D.new()
+	mi.mesh = RockKit.placeholder_mesh(id, variant, size)
+	mi.material_override = RockKit.rock_material()
+	root.add_child(mi)
+	return root
+
+
 ## UI 아이콘 그림 (assets/ui/<id>.png). 없으면 null → 글자만 보여 줌
 const UI_DIR := "res://assets/ui/"
 ## 병과별 기술 아이콘
@@ -392,6 +505,8 @@ func _make_placeholder(id: String) -> Node3D:
 			var m := BoxMesh.new()
 			m.size = size
 			mesh = m
+	if str(spec["shape"]) == "rock":
+		return _rock_placeholder(id, 0, size)
 	var root := Node3D.new()
 	root.name = id.capitalize()
 	var mi := MeshInstance3D.new()
