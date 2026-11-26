@@ -8,7 +8,7 @@ extends Node
 
 const MODEL_DIR := "res://assets/models/"
 
-## 임시 도형 정의. shape: "box" | "capsule" | "cylinder" | "cone"
+## 임시 도형 정의. shape: "box" | "capsule" | "cylinder" | "cone" | "sphere"
 ## size: 가로(x) / 높이(y) / 세로(z), 단위는 미터(타일 1칸 = 1m)
 const PLACEHOLDERS := {
 	"house":    {"shape": "box",      "size": Vector3(0.55, 0.45, 0.55), "color": Color(0.90, 0.62, 0.40)},
@@ -18,6 +18,7 @@ const PLACEHOLDERS := {
 	"raider":   {"shape": "capsule",  "size": Vector3(0.20, 0.45, 0.20), "color": Color(0.80, 0.25, 0.25)},
 	"boat":     {"shape": "box",      "size": Vector3(0.70, 0.25, 1.60), "color": Color(0.45, 0.30, 0.20)},
 	"tree":     {"shape": "cone",     "size": Vector3(0.35, 0.70, 0.35), "color": Color(0.25, 0.50, 0.30)},
+	"bush":     {"shape": "sphere",   "size": Vector3(0.16, 0.20, 0.16), "color": Color(0.38, 0.58, 0.40)},
 	# 2단계(전투)에서 추가
 	"militia":       {"shape": "capsule",  "size": Vector3(0.17, 0.42, 0.17), "color": Color(0.70, 0.70, 0.72)},
 	"raider_archer": {"shape": "capsule",  "size": Vector3(0.17, 0.42, 0.17), "color": Color(0.60, 0.20, 0.35)},
@@ -29,7 +30,7 @@ const PLACEHOLDERS := {
 	"shield_raider": {"shape": "capsule",  "size": Vector3(0.21, 0.45, 0.21), "color": Color(0.55, 0.35, 0.30)},
 	"blast":         {"shape": "cylinder", "size": Vector3(1.40, 0.10, 1.40), "color": Color(1.00, 0.55, 0.15)},
 	"stairs":        {"shape": "box",      "size": Vector3(0.62, 0.25, 0.50), "color": Color(0.60, 0.42, 0.25)},
-	"rock":          {"shape": "box",      "size": Vector3(0.75, 0.55, 0.75), "color": Color(0.50, 0.50, 0.53)},
+	"rock":          {"shape": "sphere",   "size": Vector3(0.40, 0.55, 0.40), "color": Color(0.70, 0.72, 0.71)},
 	"hover_marker_bad": {"shape": "box",   "size": Vector3(0.80, 0.02, 0.80), "color": Color(0.95, 0.25, 0.20)},
 	"path_dot":      {"shape": "box",      "size": Vector3(0.09, 0.02, 0.09), "color": Color(1.00, 1.00, 1.00)},
 	"path_dot_preview": {"shape": "box",   "size": Vector3(0.12, 0.03, 0.12), "color": Color(0.35, 0.90, 1.00)},
@@ -58,7 +59,7 @@ const PLACEHOLDERS := {
 ##   - 집: 병사보다 확실히 크게 보이도록 조금 크게
 ## color: 모델 전체를 이 색으로 칠함 (계단 파일은 새하얘서 돌 색으로)
 const MODEL_FIT := {
-	"stairs": {"fit": "stretch", "turn": PI, "size": Vector3(0.62, 0.50, 0.50), "color": Color(0.62, 0.58, 0.52)},
+	"stairs": {"fit": "stretch", "turn": PI, "size": Vector3(0.62, 0.50, 0.50), "color": Color(0.78, 0.78, 0.74)},  # 절벽 바위와 같은 밝은 돌색
 	"house": {"size": Vector3(0.72, 0.60, 0.72)},
 	# 절벽 벽은 칸 한 면을 정확히 덮어야 해서 늘려 맞춤
 	"terrace": {"fit": "stretch"},
@@ -373,6 +374,13 @@ func _make_placeholder(id: String) -> Node3D:
 			m.top_radius = size.x
 			m.bottom_radius = size.x
 			m.height = size.y
+			mesh = m
+		"sphere":
+			var m := SphereMesh.new()
+			m.radius = size.x
+			m.height = size.y
+			m.radial_segments = 8
+			m.rings = 4
 			mesh = m
 		"cone":
 			var m := CylinderMesh.new()
