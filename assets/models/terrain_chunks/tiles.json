@@ -1,0 +1,1114 @@
+{
+  "unit": "meter",
+  "axis": "Y-up",
+  "front": "-Z",
+  "grid_pitch_m": 1,
+  "terrain_step_m": 0.5,
+  "origin": "local grid anchor (0,0,0), bottom plane y=0",
+  "assets": {
+    "cove": {
+      "name": "초승달 만",
+      "cells": [
+        {
+          "x": -2,
+          "z": -2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z, 중앙 수면",
+      "notes": "오목한 해안의 낮은 모래 칸을 상륙 후보로 사용.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -2.5
+        ],
+        [
+          2.5,
+          1.5,
+          2.5
+        ]
+      ],
+      "triangles": 1176
+    },
+    "spit": {
+      "name": "모래톱 곶",
+      "cells": [
+        {
+          "x": 0,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z, 곶 끝",
+      "notes": "좁은 곶에서 안쪽으로 폭이 넓어지는 모래 지형.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -2.5
+        ],
+        [
+          2.5,
+          1.0,
+          2.5
+        ]
+      ],
+      "triangles": 728
+    },
+    "saddle": {
+      "name": "안부 고개",
+      "cells": [
+        {
+          "x": -2,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z / +Z",
+      "notes": "양쪽 능선 사이의 중앙 통로.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -2.5
+        ],
+        [
+          2.5,
+          1.5,
+          2.5
+        ]
+      ],
+      "triangles": 1400
+    },
+    "terraces": {
+      "name": "층단형 고지",
+      "cells": [
+        {
+          "x": -2,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 2,
+          "surface_y": 1.0,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 2,
+          "surface_y": 0.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-X / +X",
+      "notes": "양쪽 낮은 단에서 중앙 고지로 접근.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -2.5
+        ],
+        [
+          2.5,
+          1.5,
+          2.5
+        ]
+      ],
+      "triangles": 1400
+    },
+    "ravine": {
+      "name": "협곡",
+      "cells": [
+        {
+          "x": -2,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": -1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 2,
+          "z": 2,
+          "surface_y": 1.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z / +Z",
+      "notes": "가운데 한 칸 폭의 협곡 바닥과 양옆의 높은 벽.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -2.5
+        ],
+        [
+          2.5,
+          1.5,
+          2.5
+        ]
+      ],
+      "triangles": 1400
+    },
+    "reef": {
+      "name": "연안 암초대",
+      "cells": [
+        {
+          "x": -2,
+          "z": 0,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 2,
+          "z": 0,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        }
+      ],
+      "access": "해상 장애물",
+      "notes": "선박 접근 제한용 마스크. 해상 이동은 별도 연결.",
+      "bounds_m": [
+        [
+          -2.444,
+          0.0,
+          -0.281
+        ],
+        [
+          2.46,
+          0.63,
+          1.284
+        ]
+      ],
+      "triangles": 260
+    },
+    "causeway": {
+      "name": "돌 둑길",
+      "cells": [
+        {
+          "x": 0,
+          "z": -2,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 2,
+          "surface_y": 0.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z / +Z",
+      "notes": "수면을 가로지르는 한 칸 폭 둑길.",
+      "bounds_m": [
+        [
+          -0.5,
+          0.0,
+          -2.5
+        ],
+        [
+          0.5,
+          0.61,
+          2.5
+        ]
+      ],
+      "triangles": 540
+    },
+    "switchback": {
+      "name": "지그재그 목재 경사로",
+      "cells": [
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 0.75,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 1.25,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": 2.25,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": 1.75,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 1.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z, 좌측 하단 / 우측 상단",
+      "notes": "좌우 경사 구간은 칸당 0.5m 상승. 회전참 표면은 1.5m이므로 경사면 높이 보간 또는 연결점 설정 필요.",
+      "bounds_m": [
+        [
+          -1.465,
+          0.0,
+          -1.497
+        ],
+        [
+          1.465,
+          2.798,
+          1.495
+        ]
+      ],
+      "triangles": 756
+    },
+    "boardwalk": {
+      "name": "꺾인 습지 보행로",
+      "cells": [
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": -1,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": 0.5,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z / +X",
+      "notes": "직각으로 이어진 다섯 칸.",
+      "bounds_m": [
+        [
+          -1.46,
+          0.0,
+          -1.495
+        ],
+        [
+          1.46,
+          0.5,
+          1.495
+        ]
+      ],
+      "triangles": 540
+    },
+    "gate": {
+      "name": "목책 관문",
+      "cells": [
+        {
+          "x": -1,
+          "z": 0,
+          "surface_y": null,
+          "role": "blocked"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": null,
+          "role": "blocked"
+        },
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 0,
+          "role": "walk"
+        }
+      ],
+      "access": "-Z / +Z",
+      "notes": "기존 땅 위에 배치. 가운데 칸만 통과.",
+      "bounds_m": [
+        [
+          -1.47,
+          0.0,
+          -0.125
+        ],
+        [
+          1.47,
+          1.435,
+          0.145
+        ]
+      ],
+      "triangles": 180
+    },
+    "jettywall": {
+      "name": "돌 방파제",
+      "cells": [
+        {
+          "x": -2,
+          "z": -1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": -1,
+          "z": -1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 1,
+          "z": -1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 1,
+          "z": 0,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 1,
+          "z": 1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        },
+        {
+          "x": 2,
+          "z": 1,
+          "surface_y": null,
+          "role": "sea_obstacle"
+        }
+      ],
+      "access": "해상 장애물",
+      "notes": "선박 접근 제한용 마스크. 해상 이동은 별도 연결.",
+      "bounds_m": [
+        [
+          -2.5,
+          0.0,
+          -1.5
+        ],
+        [
+          2.5,
+          1.13,
+          1.5
+        ]
+      ],
+      "triangles": 756
+    },
+    "ladder": {
+      "name": "절벽 사다리",
+      "cells": [
+        {
+          "x": 0,
+          "z": 0,
+          "surface_y": 1.5,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": -1,
+          "surface_y": 0,
+          "role": "walk"
+        },
+        {
+          "x": 0,
+          "z": 1,
+          "surface_y": null,
+          "role": "reserved"
+        }
+      ],
+      "access": "-Z 아래 → 중앙 위",
+      "notes": "1.5m 고저차. 별도 등반 링크 필요. +Z 예약 칸은 배치 여백.",
+      "bounds_m": [
+        [
+          -0.5,
+          0.0,
+          -1.305
+        ],
+        [
+          0.5,
+          1.644,
+          0.5
+        ]
+      ],
+      "triangles": 164
+    }
+  }
+}
