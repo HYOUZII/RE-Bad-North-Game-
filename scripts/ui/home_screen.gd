@@ -197,24 +197,28 @@ func _update_camera_offset() -> void:
 func _setup_env() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.55, 0.75, 0.88)
+	# 전투 화면과 같은 차분한 톤 (눈부시지 않게)
+	env.background_color = Color(0.56, 0.62, 0.62)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.80, 0.85)
-	env.ambient_light_energy = 0.35
+	env.ambient_light_color = Color(0.70, 0.75, 0.78)
+	env.ambient_light_energy = 0.32
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 0.92
+	env.tonemap_white = 2.2
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(30), 0)
 	sun.light_energy = 0.9
+	sun.light_color = Color(1.0, 0.96, 0.90)
 	sun.shadow_enabled = true
 	add_child(sun)
 	var sea := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(200, 200)
 	sea.mesh = plane
-	sea.material_override = Assets.get_color_material(Color(0.13, 0.33, 0.50))
+	sea.material_override = Assets.get_color_material(Color(0.36, 0.47, 0.50))
 	sea.position.y = 0.02
 	add_child(sea)
 
