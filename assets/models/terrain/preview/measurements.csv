@@ -1,0 +1,11 @@
+file,min_x,min_y,min_z,max_x,max_y,max_z,triangles
+grass_flat_01.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_flat_02.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_edge.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_corner.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_bay.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_narrow.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_cape.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_islet.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+grass_canyon.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
+sand_beach.glb,-0.5,0.0,-0.5,0.5,0.5,0.5,726
