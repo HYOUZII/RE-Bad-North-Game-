@@ -79,6 +79,51 @@ const SPRITES := {
 	"brute":         {"sheet": "enemy-sword-elite", "scale": 1.5},
 }
 const SPRITE_DIR := "res://assets/sprites/"
+
+## 뼈대와 동작(애니메이션)이 있는 3D 병사 (assets/characters/). .glb 모델이 없으면 그림보다 먼저 씀.
+## 지금은 무료(CC0) KayKit 캐릭터를 임시로 씁니다. 출처·라이선스: assets/characters/kaykit/LICENSE.txt
+## - file: 캐릭터 파일   - anims: 아래 RIG_ANIMS의 동작 묶음 이름
+## - gear: 보이게 할 장비(무기·방패·모자). 몸(Body/Head/Arm/Leg)은 항상 보이고, 나머지 장비는 숨김
+## - veteran / elite: 그 단계에서 더 붙는 장비   - leader: 분대장일 때만 보이는 장비(망토)
+## - height: 게임 속 키(m). 없으면 PLACEHOLDERS 높이
+## - tint: 전체 색 곱하기(팀 구분용). 적은 붉게 물들여 아군(은빛 기사)과 한눈에 구분되게
+const RIG_DIR := "res://assets/characters/"
+const RIGS := {
+	"infantry": {"file": "kaykit/Knight.glb", "anims": "sword", "gear": ["1H_Sword", "Round_Shield"],
+		"veteran": ["Knight_Helmet"], "elite": ["Knight_Helmet", "Badge_Shield"], "leader": ["Knight_Cape"]},
+	"militia": {"file": "kaykit/Knight.glb", "anims": "sword", "gear": ["1H_Sword"], "leader": ["Knight_Cape"],
+		"tint": Color(0.82, 0.80, 0.76), "height": 0.42},
+	"pikeman": {"file": "kaykit/Knight.glb", "anims": "spear", "gear": ["2H_Sword"],
+		"veteran": ["Knight_Helmet"], "elite": ["Knight_Helmet"], "leader": ["Knight_Cape"], "tint": Color(1.0, 0.95, 0.80)},
+	"archer": {"file": "kaykit/Rogue_Hooded.glb", "anims": "bow", "gear": ["2H_Crossbow"], "leader": ["Rogue_Cape"]},
+	"raider": {"file": "kaykit/Barbarian.glb", "anims": "sword", "gear": ["1H_Axe", "Barbarian_Hat"],
+		"elite": ["1H_Axe_Offhand"], "tint": Color(0.95, 0.62, 0.55)},
+	"shield_raider": {"file": "kaykit/Barbarian.glb", "anims": "sword", "gear": ["1H_Axe", "Barbarian_Round_Shield", "Barbarian_Hat"],
+		"tint": Color(0.82, 0.55, 0.50)},
+	"raider_archer": {"file": "kaykit/Rogue.glb", "anims": "bow", "gear": ["1H_Crossbow"], "tint": Color(1.0, 0.55, 0.50)},
+	"brute": {"file": "kaykit/Barbarian.glb", "anims": "axe2h", "gear": ["2H_Axe", "Barbarian_Hat"], "tint": Color(0.72, 0.45, 0.42)},
+}
+## 동작 묶음: 동작 종류 -> 애니메이션 이름 후보(여러 개면 무작위로 섞어 씀)
+## 직접 만든 모델(Mixamo 등)은 이 이름이 없어도 rig_actor.gd가 "walk", "attack" 같은 단어로 찾아 줍니다.
+const RIG_ANIMS := {
+	"sword": {"idle": ["Idle"], "walk": ["Walking_A"], "run": ["Running_A"],
+		"attack": ["1H_Melee_Attack_Slice_Horizontal", "1H_Melee_Attack_Slice_Diagonal", "1H_Melee_Attack_Chop"],
+		"hit": ["Hit_A", "Hit_B"], "block": ["Block_Hit"], "death": ["Death_A", "Death_B"],
+		"fall": ["Jump_Idle"], "cheer": ["Cheer"]},
+	"spear": {"idle": ["2H_Melee_Idle"], "walk": ["Walking_B"], "run": ["Running_A"],
+		"attack": ["2H_Melee_Attack_Stab"], "hit": ["Hit_A", "Hit_B"], "death": ["Death_A", "Death_B"],
+		"fall": ["Jump_Idle"], "cheer": ["Cheer"]},
+	"axe2h": {"idle": ["2H_Melee_Idle"], "walk": ["Walking_C"], "run": ["Running_B"],
+		"attack": ["2H_Melee_Attack_Chop", "2H_Melee_Attack_Slice"], "hit": ["Hit_B"], "death": ["Death_B"],
+		"fall": ["Jump_Idle"], "cheer": ["Cheer"]},
+	"bow": {"idle": ["Idle"], "walk": ["Walking_A"], "run": ["Running_A"],
+		"attack": ["1H_Melee_Attack_Stab"], "aim": ["2H_Ranged_Aiming"], "shoot": ["2H_Ranged_Shoot"],
+		"hit": ["Hit_A", "Hit_B"], "death": ["Death_A", "Death_B"], "fall": ["Jump_Idle"], "cheer": ["Cheer"]},
+}
+## 몸 부분 메시 이름에 들어 있는 단어 (항상 보임)
+const RIG_BODY_WORDS := ["_Body", "_Head", "_Arm", "_Leg"]
+const RigActor := preload("res://scripts/core/rig_actor.gd")
+var _tint_cache: Dictionary = {}
 const SpriteActor := preload("res://scripts/core/sprite_actor.gd")
 
 var _material_cache: Dictionary = {}
@@ -89,19 +134,120 @@ func has_custom_model(id: String) -> bool:
 
 
 ## 모델 하나를 새로 만들어 돌려줍니다. 원점(0,0,0)은 모델의 바닥 중앙입니다.
-## 찾는 순서: assets/models/<id>.glb → assets/sprites/ 병사 그림 → 임시 도형
+## 찾는 순서: assets/models/<id>.glb → assets/characters/ 움직이는 3D 병사 → assets/sprites/ 병사 그림 → 임시 도형
 ## tier: 병사 그림 단계("basic", "veteran", "elite"). 그림이 없는 대상은 무시됩니다.
 func get_model(id: String, tier: String = "basic") -> Node3D:
 	var path := MODEL_DIR + id + ".glb"
 	if ResourceLoader.exists(path):
 		var scene := load(path) as PackedScene
 		if scene != null:
-			return _fit_model(id, scene.instantiate() as Node3D)
+			var inst := scene.instantiate() as Node3D
+			# 직접 만든 병사 모델에 동작(애니메이션)이 들어 있으면 움직이는 병사로 만듦
+			if RIGS.has(id) and not inst.find_children("*", "AnimationPlayer", true, false).is_empty():
+				return _wrap_rig(id, _fit_model(id, inst), _fit_scale_of(id, inst), {}, [])
+			return _fit_model(id, inst)
 		push_warning("모델을 불러오지 못했습니다: " + path)
+	var rig := _make_rig(id, tier)
+	if rig != null:
+		return rig
 	var sprite := _make_sprite(id, tier)
 	if sprite != null:
 		return sprite
 	return _make_placeholder(id)
+
+
+## 3D 캐릭터 파일이 있으면 움직이는 병사(rig_actor.gd)를 만들어 돌려줍니다. 없으면 null.
+func _make_rig(id: String, tier: String) -> Node3D:
+	if not RIGS.has(id):
+		return null
+	var spec: Dictionary = RIGS[id]
+	var path := RIG_DIR + str(spec["file"])
+	if not ResourceLoader.exists(path):
+		return null
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return null
+	var inst := scene.instantiate() as Node3D
+	var show: Array = spec.get("gear", []).duplicate()
+	show.append_array(spec.get(tier, []))
+	var leader_names: Array = spec.get("leader", [])
+	var leader_nodes: Array = []
+	var tint: Color = spec.get("tint", Color.WHITE)
+	for m in inst.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var is_body := false
+		for w in RIG_BODY_WORDS:
+			if str(w) in mi.name:
+				is_body = true
+		if mi.name in leader_names:
+			leader_nodes.append(mi)
+		mi.visible = is_body or (mi.name in show)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if tint != Color.WHITE:
+			_tint_mesh(mi, tint)
+	# 키 맞추기: 몸 부분만 재서(무기 길이는 빼고) 원하는 키가 되게
+	var body := _body_bounds(inst)
+	var height: float = float(spec.get("height", _placeholder_box(id).y if PLACEHOLDERS.has(id) else 0.45))
+	var k: float = height / max(body.size.y, 0.0001)
+	var fit := Node3D.new()
+	fit.name = "Fit"
+	fit.scale = Vector3(k, k, k)
+	fit.rotation.y = PI  # 파일 속 캐릭터는 +Z를 봄. 게임은 -Z가 앞
+	fit.position.y = -body.position.y * k
+	fit.add_child(inst)
+	return _wrap_rig(id, fit, k, RIG_ANIMS.get(str(spec.get("anims", "")), {}), leader_nodes)
+
+
+func _wrap_rig(id: String, model: Node3D, model_scale: float, anims: Dictionary, leader_nodes: Array) -> Node3D:
+	var actor := RigActor.new()
+	actor.name = id.capitalize()
+	actor.setup(model, anims, model_scale, leader_nodes)
+	return actor
+
+
+## .glb 병사 모델이 _fit_model에서 받게 될 크기 배율(걷는 속도 맞춤용)
+func _fit_scale_of(id: String, model: Node3D) -> float:
+	var box := _mesh_bounds(model, Transform3D.IDENTITY)
+	var target: Vector3 = MODEL_FIT.get(id, {}).get("size", _placeholder_box(id))
+	if box.size.x <= 0.0001 or box.size.z <= 0.0001:
+		return 1.0
+	return min(target.x / box.size.x, target.z / box.size.z)
+
+
+## 몸(Body/Head/Arm/Leg) 메시만 감싸는 상자
+func _body_bounds(model: Node3D) -> AABB:
+	var box := AABB()
+	var has := false
+	for m in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var is_body := false
+		for w in RIG_BODY_WORDS:
+			if str(w) in mi.name:
+				is_body = true
+		if not is_body or mi.mesh == null:
+			continue
+		var b := mi.mesh.get_aabb()
+		box = b if not has else box.merge(b)
+		has = true
+	if not has:
+		return _mesh_bounds(model, Transform3D.IDENTITY)
+	return box
+
+
+## 메시의 원래 재질에 색을 곱한 복사본을 입힘 (같은 재질·색은 재사용)
+func _tint_mesh(mi: MeshInstance3D, tint: Color) -> void:
+	if mi.mesh == null:
+		return
+	for i in range(mi.mesh.get_surface_count()):
+		var base := mi.mesh.surface_get_material(i)
+		if not (base is StandardMaterial3D):
+			continue
+		var key := "%d:%s" % [base.get_instance_id(), tint.to_html()]
+		if not _tint_cache.has(key):
+			var mat := (base as StandardMaterial3D).duplicate() as StandardMaterial3D
+			mat.albedo_color = mat.albedo_color * tint
+			_tint_cache[key] = mat
+		mi.set_surface_override_material(i, _tint_cache[key])
 
 
 ## 병사 그림이 있으면 8방향 그림 병사를 만들어 돌려줍니다. 없으면 null.
