@@ -292,18 +292,52 @@ func _carve_caves(max_count: int) -> void:
 		made += 1
 
 
-## 계단 연결 과정에서 높이가 바뀌어 동굴 조건(지붕이 바닥보다 2단 이상, 양옆 중 둘 이상이 바닥보다 높음)이 깨지면 지붕을 없앰
+## 계단 연결 과정에서 높이가 바뀌어 동굴 조건이 깨지면 지붕을 없앰.
+## 조건: 지붕이 바닥보다 2단 이상 높고, 통로 "양옆"(통로 방향과 직각인 두 칸)이 모두 바닥보다 높아야 함.
+## 한 칸이라도 깨지면 그 동굴(이어진 동굴 칸 전체)을 통째로 없앰 → 반쪽짜리 지붕이 공중에 뜨지 않게.
 func _check_caves() -> void:
-	for c in caves.keys():
-		var bad := not tiles.has(c) or int(caves[c]) < int(tiles.get(c, 0)) + 2
-		if not bad:
-			var walls := 0
+	var done := {}
+	for start in caves.keys():
+		if done.has(start):
+			continue
+		var comp: Array[Vector2i] = [start]
+		done[start] = true
+		var i := 0
+		while i < comp.size():
 			for d in DIRS4:
-				if int(tiles.get(c + d, 0)) > int(tiles[c]) or caves.has(c + d):
-					walls += 1
-			bad = walls < 2
+				var n: Vector2i = comp[i] + d
+				if caves.has(n) and not done.has(n):
+					done[n] = true
+					comp.append(n)
+			i += 1
+		var bad := false
+		for c in comp:
+			if not tiles.has(c) or int(caves[c]) < int(tiles[c]) + 2:
+				bad = true
+				break
+			# 통로 방향: 옆 동굴 칸이 있는 쪽. 한 칸짜리면 양옆이 높은 쪽을 통로 방향으로 봄
+			var along_x := caves.has(c + Vector2i(1, 0)) or caves.has(c - Vector2i(1, 0))
+			var along_z := caves.has(c + Vector2i(0, 1)) or caves.has(c - Vector2i(0, 1))
+			var fl := int(tiles[c])
+			var walls_x := int(tiles.get(c + Vector2i(0, 1), 0)) > fl and int(tiles.get(c - Vector2i(0, 1), 0)) > fl
+			var walls_z := int(tiles.get(c + Vector2i(1, 0), 0)) > fl and int(tiles.get(c - Vector2i(1, 0), 0)) > fl
+			if along_x and not walls_x:
+				bad = true
+			elif along_z and not walls_z:
+				bad = true
+			elif not along_x and not along_z and not (walls_x or walls_z):
+				bad = true
 		if bad:
-			caves.erase(c)
+			for c in comp:
+				caves.erase(c)
+
+
+## 동굴 입구(동굴 칸 바로 옆 칸)인가
+func _near_cave(c: Vector2i) -> bool:
+	for d in DIRS4:
+		if caves.has(c + d):
+			return true
+	return false
 
 
 func _add_stair(edges: Array) -> void:
@@ -344,7 +378,7 @@ func _place_rocks(count: int) -> void:
 	for c in cells:
 		if placed >= count:
 			break
-		if c in shore or _touches_stairs(c) or caves.has(c):
+		if c in shore or _touches_stairs(c) or caves.has(c) or _near_cave(c):  # 입구를 막으면 막다른 굴이 됨
 			continue
 		blocked[c] = true
 		var start: Vector2i = _center_cell() if c != _center_cell() else c + Vector2i(1, 0)

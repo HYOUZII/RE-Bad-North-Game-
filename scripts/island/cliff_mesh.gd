@@ -67,7 +67,9 @@ static func build(tiles: Dictionary, step: float, sand: Dictionary, caves: Dicti
 	for c in caves.keys():
 		var floor_y := int(tiles[c]) * step
 		var ceil_y := (int(caves[c]) - 1) * step - 0.005
-		var sq: Array = [Vector2(c.x - 0.5, c.y - 0.5), Vector2(c.x + 0.5, c.y - 0.5), Vector2(c.x + 0.5, c.y + 0.5), Vector2(c.x - 0.5, c.y + 0.5)]
+		# 둥글게 깎인 벽/지붕 안쪽에 숨도록 칸보다 조금 작게 (1칸 그대로면 지붕 밖으로 검은 조각이 삐져나옴)
+		var r := 0.36
+		var sq: Array = [Vector2(c.x - r, c.y - r), Vector2(c.x + r, c.y - r), Vector2(c.x + r, c.y + r), Vector2(c.x - r, c.y + r)]
 		for k in [[0, 1, 2], [0, 2, 3]]:
 			for i in k:
 				st.set_color(CAVE_DARK)
