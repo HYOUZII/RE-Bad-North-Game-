@@ -10,21 +10,25 @@ extends Node3D
 ## tiles 사전: Vector2i(x, z) -> 높이(1 이상의 정수). 높이 0 이하는 바다라서 저장하지 않습니다.
 ## stairs 사전: 계단이 놓인 두 칸 묶음 키("x,z|x,z") -> true
 ## blocked 사전: 바위가 있어 못 지나가는 칸 -> true
+## caves 사전: 동굴 통로 칸 -> 지붕 높이. 이 칸의 tiles 높이는 "통로 바닥" 높이라서
+##   양쪽 입구와 같은 높이로 걸어 지나갑니다(이동 규칙은 그대로). 지붕은 그림일 뿐 위로는 못 걷습니다.
 
 @export var radius: int = 10
 @export var max_height: int = 4
 @export var tile_size: float = 1.0
-@export var step_height: float = 0.5  # 높이 1단계당 실제 높이(m)
+@export var step_height: float = 0.8  # 높이 1단계당 실제 높이(m). 절벽이 웅장해 보이도록 0.5 → 0.8
 
 const GRASS := Color(0.49, 0.69, 0.41)
 const SAND := Color(0.86, 0.80, 0.60)
 const ROCK := Color(0.55, 0.55, 0.58)
 const TerrainBuilder := preload("res://scripts/island/terrain_builder.gd")
+const MAX_CAVE_LEN := 5  # 동굴 통로 최대 길이(칸)
 const DIRS4: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
 var tiles: Dictionary = {}
 var stairs: Dictionary = {}
 var blocked: Dictionary = {}
+var caves: Dictionary = {}
 var house_cells: Array[Vector2i] = []
 
 var _rng := RandomNumberGenerator.new()
@@ -36,6 +40,7 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 	tiles.clear()
 	stairs.clear()
 	blocked.clear()
+	caves.clear()
 	house_cells.clear()
 	_rng.seed = seed_value
 
@@ -60,11 +65,14 @@ func generate(seed_value: int, house_count: int = 3) -> void:
 			tiles[Vector2i(x, z)] = h
 
 	_smooth_plateaus()
+	_carve_caves(2)
 	_connect_with_stairs()
+	_check_caves()
 	_place_rocks(radius / 2 + 1)
 	_build_tiles()
 	_place_houses(house_count)
 	_place_trees(4 + radius / 2)
+	_place_bushes()
 
 
 # ================================================================ 이동 규칙 (길찾기에서 사용)
@@ -196,6 +204,8 @@ func _connect_with_stairs() -> void:
 				var rb: int = region[n]
 				if ra == rb or abs(int(tiles[c]) - int(tiles[n])) != 1:
 					continue
+				if caves.has(c) or caves.has(n):
+					continue  # 동굴 안에는 계단 없음 (지붕에 머리가 닿음)
 				var key := "%d-%d" % [min(ra, rb), max(ra, rb)]
 				if not cands.has(key):
 					cands[key] = {"a": min(ra, rb), "b": max(ra, rb), "edges": []}
@@ -237,6 +247,99 @@ func _connect_with_stairs() -> void:
 			tiles.erase(c)
 
 
+## 동굴: 두 낮은 땅 사이를 가로막은 두꺼운 바위(높이가 입구보다 2단 이상 높음)를 뚫어 통로를 만듭니다.
+## 통로 칸 높이를 입구 높이로 낮추고(걸을 수 있게), 원래 높이는 지붕 높이로 caves 에 적어 둡니다.
+## 통로 양옆은 입구보다 높아야 합니다(옆으로 새지 않는 굴). 동굴 칸에는 계단을 놓지 않습니다.
+func _carve_caves(max_count: int) -> void:
+	var found: Array = []
+	for start in tiles.keys():
+		var floor_h := int(tiles[start])
+		for d in DIRS4:
+			# start(입구) → 통로 1~MAX_CAVE_LEN칸 → 반대쪽 입구(같은 높이)
+			var run: Array[Vector2i] = []
+			var c: Vector2i = start + d
+			var ok := false
+			while run.size() < MAX_CAVE_LEN and tiles.has(c):
+				var h := int(tiles[c])
+				if h == floor_h and run.size() > 0:
+					ok = true
+					break
+				if h < floor_h + 2:
+					break
+				var side := Vector2i(d.y, d.x)
+				if int(tiles.get(c + side, 0)) <= floor_h or int(tiles.get(c - side, 0)) <= floor_h:
+					break
+				run.append(c)
+				c += d
+			if ok:
+				found.append({"run": run, "floor": floor_h})
+	_shuffle(found)
+	var made := 0
+	for f in found:
+		if made >= max_count:
+			break
+		var run: Array = f["run"]
+		var clash := false
+		for c in run:
+			for d in [Vector2i.ZERO, Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if caves.has(c + d):
+					clash = true
+		if clash:
+			continue
+		for c in run:
+			caves[c] = int(tiles[c])  # 원래 높이 = 지붕 높이
+			tiles[c] = int(f["floor"])  # 걷는 높이 = 입구 높이
+		made += 1
+
+
+## 계단 연결 과정에서 높이가 바뀌어 동굴 조건이 깨지면 지붕을 없앰.
+## 조건: 지붕이 바닥보다 2단 이상 높고, 통로 "양옆"(통로 방향과 직각인 두 칸)이 모두 바닥보다 높아야 함.
+## 한 칸이라도 깨지면 그 동굴(이어진 동굴 칸 전체)을 통째로 없앰 → 반쪽짜리 지붕이 공중에 뜨지 않게.
+func _check_caves() -> void:
+	var done := {}
+	for start in caves.keys():
+		if done.has(start):
+			continue
+		var comp: Array[Vector2i] = [start]
+		done[start] = true
+		var i := 0
+		while i < comp.size():
+			for d in DIRS4:
+				var n: Vector2i = comp[i] + d
+				if caves.has(n) and not done.has(n):
+					done[n] = true
+					comp.append(n)
+			i += 1
+		var bad := false
+		for c in comp:
+			if not tiles.has(c) or int(caves[c]) < int(tiles[c]) + 2:
+				bad = true
+				break
+			# 통로 방향: 옆 동굴 칸이 있는 쪽. 한 칸짜리면 양옆이 높은 쪽을 통로 방향으로 봄
+			var along_x := caves.has(c + Vector2i(1, 0)) or caves.has(c - Vector2i(1, 0))
+			var along_z := caves.has(c + Vector2i(0, 1)) or caves.has(c - Vector2i(0, 1))
+			var fl := int(tiles[c])
+			var walls_x := int(tiles.get(c + Vector2i(0, 1), 0)) > fl and int(tiles.get(c - Vector2i(0, 1), 0)) > fl
+			var walls_z := int(tiles.get(c + Vector2i(1, 0), 0)) > fl and int(tiles.get(c - Vector2i(1, 0), 0)) > fl
+			if along_x and not walls_x:
+				bad = true
+			elif along_z and not walls_z:
+				bad = true
+			elif not along_x and not along_z and not (walls_x or walls_z):
+				bad = true
+		if bad:
+			for c in comp:
+				caves.erase(c)
+
+
+## 동굴 입구(동굴 칸 바로 옆 칸)인가
+func _near_cave(c: Vector2i) -> bool:
+	for d in DIRS4:
+		if caves.has(c + d):
+			return true
+	return false
+
+
 func _add_stair(edges: Array) -> void:
 	var e: Array = edges[_rng.randi_range(0, edges.size() - 1)]
 	stairs[edge_key(e[0], e[1])] = true
@@ -275,7 +378,7 @@ func _place_rocks(count: int) -> void:
 	for c in cells:
 		if placed >= count:
 			break
-		if c in shore or _touches_stairs(c):
+		if c in shore or _touches_stairs(c) or caves.has(c) or _near_cave(c):  # 입구를 막으면 막다른 굴이 됨
 			continue
 		blocked[c] = true
 		var start: Vector2i = _center_cell() if c != _center_cell() else c + Vector2i(1, 0)
@@ -314,7 +417,7 @@ func _build_tiles() -> void:
 			color = GRASS.darkened(0.12)
 		colors[cell] = color
 	# 그리기만 terrain_builder 가 맡음. 이동 규칙(tiles·stairs)은 그대로.
-	TerrainBuilder.build(self, tiles, step_height, stairs, colors)
+	TerrainBuilder.build(self, tiles, step_height, stairs, colors, caves)
 	for cell in blocked.keys():
 		var rock := Assets.get_model("rock")
 		rock.position = cell_to_world(cell)
@@ -333,6 +436,7 @@ func _build_tiles() -> void:
 		# 낮은 칸의 높은 칸 쪽 절반에 반 단짜리 디딤돌을 놓아 계단처럼 보이게 함
 		st.position = base + Vector3(dir.x * 0.25, 0.0, dir.y * 0.25)
 		st.rotation.y = atan2(-dir.x, -dir.y)
+		st.scale.y = step_height / 0.5  # 계단 모델은 한 단 0.5m 기준이라 단 높이에 맞춰 늘림
 		add_child(st)
 
 
@@ -344,7 +448,7 @@ func _parse_cell(s: String) -> Vector2i:
 ## 집 위치만 정합니다. 집 모델과 체력은 전투(battle.gd)가 만듭니다.
 func _place_houses(count: int) -> void:
 	var shore := get_shore_cells()
-	var candidates: Array = tiles.keys().filter(func(c): return is_walkable(c) and not (c in shore) and not _touches_stairs(c))
+	var candidates: Array = tiles.keys().filter(func(c): return is_walkable(c) and not (c in shore) and not _touches_stairs(c) and not caves.has(c))
 	_shuffle(candidates)
 	for min_gap in [4, 3, 2, 1]:
 		for cell in candidates:
@@ -368,12 +472,33 @@ func _place_trees(count: int) -> void:
 		if placed >= count:
 			break
 		var cell: Vector2i = cells[_rng.randi_range(0, cells.size() - 1)]
-		if cell in house_cells or blocked.has(cell) or _touches_stairs(cell):
+		if cell in house_cells or blocked.has(cell) or _touches_stairs(cell) or caves.has(cell):
 			continue
 		var tree := Assets.get_model("tree")
 		tree.position = cell_to_world(cell) + Vector3(_rng.randf_range(-0.3, 0.3), 0, _rng.randf_range(-0.3, 0.3))
 		add_child(tree)
 		placed += 1
+
+
+## 덤불: 절벽 아래(옆 칸이 더 높은 곳)와 해안에 조금씩. 장식이라 지나갈 수 있음.
+func _place_bushes() -> void:
+	for c in tiles.keys():
+		if c in house_cells or blocked.has(c) or caves.has(c):
+			continue
+		for d in DIRS4:
+			var n: Vector2i = c + d
+			var cliff := int(tiles.get(n, 0)) > int(tiles[c]) and not has_stairs(c, n)
+			var coast := not tiles.has(n) and _rng.randf() < 0.25
+			if not (cliff or coast) or _rng.randf() > 0.55:
+				continue
+			for _k in range(_rng.randi_range(1, 3)):
+				var b := Assets.get_model("bush")
+				var along := _rng.randf_range(-0.4, 0.4)
+				var off := Vector3(d.x, 0, d.y) * (0.3 if cliff else 0.18) + Vector3(d.y, 0, d.x) * along
+				b.position = cell_to_world(c) + off
+				var sc := _rng.randf_range(0.7, 1.3)
+				b.scale = Vector3(sc, sc * _rng.randf_range(0.8, 1.1), sc)
+				add_child(b)
 
 
 func _shuffle(arr: Array) -> void:

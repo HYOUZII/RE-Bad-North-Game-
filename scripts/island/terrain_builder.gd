@@ -32,6 +32,12 @@ const CANON := {
 	"islet": [0, 1, 2, 3],
 }
 
+const CliffMesh := preload("res://scripts/island/cliff_mesh.gd")
+
+## 그리는 방식: "smooth" = 한 덩어리 바위 절벽(cliff_mesh.gd, 외곽선이 둥글고 자연스러움)
+##              "pieces" = 칸마다 상자 + 지형 조각 .glb (예전 방식)
+const STYLE := "smooth"
+
 const SOIL := Color(0.47, 0.40, 0.32)   # 지형 조각 아래 흙기둥 색
 const SAND := Color(0.86, 0.80, 0.60)
 
@@ -88,7 +94,16 @@ static func sea_side(tiles: Dictionary, cell: Vector2i) -> int:
 ## 칸들을 그려서 parent 아래에 붙입니다.
 ## tiles: Vector2i -> 높이, step: 한 단 높이(m), stair_faces: "x,z|x,z" 키 사전(계단 자리에는 절벽 벽을 안 붙임)
 ## colors: 칸 -> 상자 색 (지형 조각이 없을 때 쓰는 원래 색)
-static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: Dictionary, colors: Dictionary) -> void:
+## caves: 동굴 통로 칸 -> 지붕 높이 (island_generator.gd 참고, 없으면 빈 사전)
+static func build(parent: Node3D, tiles: Dictionary, step: float, stair_faces: Dictionary, colors: Dictionary, caves: Dictionary = {}) -> void:
+	if STYLE == "smooth":
+		# 바다와 맞닿은 높이 1 칸은 모래
+		var sand := {}
+		for cell in tiles.keys():
+			if int(tiles[cell]) == 1 and sea_side(tiles, cell) >= 0:
+				sand[cell] = true
+		parent.add_child(CliffMesh.build(tiles, step, sand, caves, stair_faces))
+		return
 	var use_kit := Assets.has_terrain_kit()
 	var use_wall := Assets.has_custom_model("terrace")
 	for cell in tiles.keys():

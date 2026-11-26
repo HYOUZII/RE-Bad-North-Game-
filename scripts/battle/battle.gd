@@ -1181,23 +1181,33 @@ func _spawn_dots(pts: Array, model_id: String) -> void:
 
 
 func _setup_world() -> void:
+	# 분위기: 옅은 청회색 하늘과 안개, 부드러운 빛 (색 수를 줄인 파스텔 톤)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.62, 0.78, 0.86)
+	env.background_color = Color(0.71, 0.79, 0.81)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.80, 0.90)
-	env.ambient_light_energy = 0.6
+	env.ambient_light_color = Color(0.78, 0.82, 0.88)
+	env.ambient_light_energy = 0.4
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_white = 1.4
+	# 구석·절벽 아래를 살짝 어둡게 (Forward+ 렌더러에서만 동작, 아니면 무시됨)
+	env.ssao_enabled = true
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.6
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.62, 0.78, 0.86)
-	env.fog_density = 0.002
+	env.fog_light_color = Color(0.71, 0.79, 0.81)
+	env.fog_density = 0.005
+	env.fog_sky_affect = 0.0
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-55), deg_to_rad(30), 0)
-	sun.light_energy = 1.2
+	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(-150), 0)  # 화면 뒤쪽 왼편에서 비춰서 앞쪽 절벽 면에 그늘이 지게
+	sun.light_energy = 1.1
+	sun.light_color = Color(1.0, 0.97, 0.92)
 	sun.shadow_enabled = true
+	sun.shadow_blur = 1.5
 	add_child(sun)
 
 	var sea := MeshInstance3D.new()
@@ -1205,8 +1215,8 @@ func _setup_world() -> void:
 	plane.size = Vector2(200, 200)
 	sea.mesh = plane
 	var sea_mat := StandardMaterial3D.new()
-	sea_mat.albedo_color = Color(0.13, 0.33, 0.50)
-	sea_mat.roughness = 0.3
+	sea_mat.albedo_color = Color(0.45, 0.58, 0.63)
+	sea_mat.roughness = 0.25
 	sea.material_override = sea_mat
 	sea.position.y = 0.02
 	sea.name = "Sea"
